@@ -1,0 +1,153 @@
+╔═══════════════════════════════════════════════════════════════╗
+║                    SLIMEBOMB - SETUP RAPIDE                   ║
+╚═══════════════════════════════════════════════════════════════╝
+
+📋 CHECKLIST AVANT DE LANCER LE JEU
+
+□ 1. OUVRIR LE PROJET DANS GODOT 4.6
+   - Lancer Godot 4.6
+   - Cliquer "Import" et sélectionner ce dossier
+   - OU double-cliquer sur "project.godot"
+
+□ 2. CONFIGURER GLOBALSETTINGS (CRITIQUE!)
+   ⚠️ SANS CETTE ÉTAPE, LE JEU VA CRASHER!
+
+   a) Ouvrir: Project > Project Settings
+   b) Aller dans l'onglet "Autoload"
+   c) Cliquer sur l'icône de dossier "📁"
+   d) Naviguer vers: scripts/GlobalSettings.gd
+   e) Node Name: GlobalSettings (laisser par défaut)
+   f) Cliquer "Add"
+   g) Vérifier qu'il apparaît dans la liste avec ✓ Enable
+   h) Cliquer "Close"
+
+□ 3. AJOUTER DES SPRITES (Optionnel pour commencer)
+   Le jeu fonctionne avec des cercles de couleur.
+   Pour de vrais sprites:
+   - Placer vos images dans assets/
+   - Modifier Ball.tscn pour utiliser vos textures
+
+□ 4. TESTER LE JEU
+   - Appuyer F5 ou cliquer ▶️ Play
+   - Utiliser la SOURIS pour tester les swipes
+   - Cliquer-glisser = swipe tactile
+
+═══════════════════════════════════════════════════════════════
+
+🎮 CONTRÔLES
+
+PC (Testing):
+  - CLIC GAUCHE + GLISSER = Swipe
+  - La souris simule le tactile automatiquement
+
+Mobile:
+  - TOUCHER + GLISSER = Swipe
+
+═══════════════════════════════════════════════════════════════
+
+🎯 RÈGLES DU JEU
+
+🟢 BALLE VERTE    → Swipe vers la DROITE →
+🔴 BALLE ROUGE    → Swipe vers la GAUCHE ←
+💣 BOMBE NOIRE    → NE PAS TOUCHER! (Game Over)
+
+▪ 3 vies maximum
+▪ Combo = Plus de points
+▪ La difficulté augmente avec le temps
+
+═══════════════════════════════════════════════════════════════
+
+⚙️ CONFIGURATION RECOMMANDÉE (Project Settings)
+
+Editor > Editor Settings > General:
+  ✓ Interface > Editor > Single Window Mode: On
+
+Display > Window:
+  ✓ Emulate Touch from Mouse: On (déjà configuré)
+  ✓ Size: 1080x2400 (déjà configuré)
+  ✓ Mode: Fullscreen (déjà configuré)
+
+═══════════════════════════════════════════════════════════════
+
+🐛 PROBLÈMES FRÉQUENTS
+
+❌ "Invalid get index 'lives'" ou erreurs GlobalSettings
+   → Vous n'avez pas configuré l'Autoload (étape 2)
+   → Recommencer l'étape 2 ci-dessus
+
+❌ Les balles ne spawent pas
+   → Vérifier que Ball.tscn existe dans scenes/objects/
+   → Vérifier que ball_scene est assigné dans SwipeGame
+
+❌ Les swipes ne fonctionnent pas
+   → Vérifier "Emulate Touch from Mouse" dans Project Settings
+   → Essayer de cliquer + glisser (pas juste cliquer)
+
+❌ Écran noir au lancement
+   → Vérifier que SwipeGame.tscn est défini comme main scene
+   → Project > Project Settings > Application > Run > Main Scene
+
+═══════════════════════════════════════════════════════════════
+
+📱 EXPORT ANDROID (Après développement)
+
+Prérequis:
+  1. Android Studio installé
+  2. Android SDK configuré dans Godot
+  3. Keystore créé pour signer l'APK
+
+Build:
+  - Project > Export
+  - Add > Android
+  - Configurer les permissions
+  - Export Project
+
+Voir NEXT_STEPS.md pour les détails complets.
+
+═══════════════════════════════════════════════════════════════
+
+📚 DOCUMENTATION
+
+├─ README.md           → Infos générales sur le projet
+├─ NEXT_STEPS.md       → Guide complet monétisation + features
+├─ scripts/            → Code source commenté
+└─ scenes/             → Scènes Godot
+
+═══════════════════════════════════════════════════════════════
+
+🚀 ROADMAP RAPIDE
+
+Semaine 1: Polish (sprites, sons, UI)
+Semaine 2: Monétisation (ads, IAP, coins)
+Semaine 3: Rétention (missions, achievements)
+Semaine 4: Launch (export, Play Store)
+
+Voir NEXT_STEPS.md pour tous les détails!
+
+═══════════════════════════════════════════════════════════════
+
+✅ READY TO GO!
+
+Une fois GlobalSettings configuré en Autoload:
+  → Appuyez sur F5
+  → Swipez les balles!
+  → Amusez-vous!
+
+═══════════════════════════════════════════════════════════════
+
+💡 ASTUCE PRO
+
+Pour un développement rapide:
+  1. Gardez l'éditeur Godot ouvert sur un écran
+  2. Éditez les scripts dans VSCode sur l'autre écran
+  3. Alt+Tab vers Godot pour tester instantanément
+  4. Les changements de script sont détectés automatiquement!
+
+═══════════════════════════════════════════════════════════════
+
+🎯 BON CODE!
+
+Questions? Consulter la doc Godot: docs.godotengine.org
+Bugs? Vérifier la console (Output panel en bas)
+
+Let's make this game ADDICTIVE! 🔥

@@ -1,0 +1,24 @@
+<svg width="128" height="128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Texture NEUTRE qui sera colorisépar self_modulate -->
+  <defs>
+    <radialGradient id="ballGradientNeutral" cx="40%" cy="40%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#cccccc;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#888888;stop-opacity:1" />
+    </radialGradient>
+
+    <!-- Ombre portée -->
+    <filter id="shadowNeutral">
+      <feDropShadow dx="0" dy="4" stdDeviation="4" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Cercle principal BLANC/GRIS (neutre) -->
+  <circle cx="64" cy="64" r="60" fill="url(#ballGradientNeutral)" filter="url(#shadowNeutral)"/>
+
+  <!-- Reflet pour effet brillant -->
+  <ellipse cx="50" cy="45" rx="25" ry="35" fill="#ffffff" opacity="0.6"/>
+
+  <!-- Petit reflet secondaire -->
+  <circle cx="45" cy="40" r="12" fill="#ffffff" opacity="0.8"/>
+</svg>

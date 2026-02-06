@@ -1,0 +1,24 @@
+<svg width="128" height="128" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="128" height="128" fill="#1a1a2e" rx="20"/>
+
+  <!-- Green ball -->
+  <circle cx="45" cy="50" r="25" fill="#32ff7e" opacity="0.9"/>
+  <circle cx="45" cy="50" r="20" fill="#3dff8e" opacity="0.6"/>
+
+  <!-- Red ball -->
+  <circle cx="85" cy="50" r="25" fill="#ff4757" opacity="0.9"/>
+  <circle cx="85" cy="50" r="20" fill="#ff5770" opacity="0.6"/>
+
+  <!-- Bomb -->
+  <circle cx="65" cy="90" r="22" fill="#2d2d2d"/>
+  <rect x="63" y="62" width="4" height="12" fill="#ff6b6b" rx="2"/>
+  <circle cx="65" cy="60" r="3" fill="#ffaa00"/>
+
+  <!-- Swipe arrows -->
+  <path d="M 25 50 L 10 50" stroke="#32ff7e" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M 10 50 L 15 45 M 10 50 L 15 55" stroke="#32ff7e" stroke-width="3" fill="none" stroke-linecap="round"/>
+
+  <path d="M 105 50 L 120 50" stroke="#ff4757" stroke-width="3" fill="none" stroke-linecap="round"/>
+  <path d="M 120 50 L 115 45 M 120 50 L 115 55" stroke="#ff4757" stroke-width="3" fill="none" stroke-linecap="round"/>
+</svg>
