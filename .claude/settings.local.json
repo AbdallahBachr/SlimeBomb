@@ -3,7 +3,8 @@
     "allow": [
       "Bash(powershell -Command:*)",
       "WebFetch(domain:github.com)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(ffmpeg:*)"
     ]
   }
 }

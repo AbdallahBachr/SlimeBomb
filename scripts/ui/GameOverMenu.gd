@@ -11,11 +11,43 @@ extends Control
 var current_score: int = 0
 var high_score: int = 0
 var max_combo: int = 0
+var settings_menu: Control = null
 
 func _ready():
 	retry_button.pressed.connect(_on_retry)
 	menu_button.pressed.connect(_on_menu)
 	visible = false
+
+	_add_settings_button()
+	_load_settings_overlay()
+
+func _add_settings_button():
+	var settings_button = Button.new()
+	settings_button.text = "SETTINGS"
+	settings_button.custom_minimum_size = Vector2(0, 55)
+	settings_button.add_theme_font_size_override("font_size", 24)
+	settings_button.add_theme_color_override("font_color", Color(0.6, 0.6, 0.7, 1))
+	settings_button.add_theme_color_override("font_hover_color", Color(0, 1, 1, 1))
+
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.12, 0.12, 0.18, 1)
+	style.set_border_width_all(2)
+	style.border_color = Color(0.35, 0.35, 0.45, 1)
+	style.set_corner_radius_all(25)
+	settings_button.add_theme_stylebox_override("normal", style)
+
+	var vbox = $Panel/VBoxContainer
+	vbox.add_child(settings_button)
+	settings_button.pressed.connect(_on_settings)
+
+func _load_settings_overlay():
+	var settings_scene = load("res://scenes/ui/SettingsMenu.tscn")
+	settings_menu = settings_scene.instantiate()
+	add_child(settings_menu)
+
+func _on_settings():
+	if settings_menu:
+		settings_menu.show_settings()
 
 func show_game_over(score: int, combo: int):
 	current_score = score
@@ -32,11 +64,9 @@ func show_game_over(score: int, combo: int):
 	_animate_entrance(is_new_best)
 
 func _animate_entrance(is_new_best: bool):
-	# Setup initial
 	panel.scale = Vector2(0.6, 0.6)
 	panel.modulate.a = 0.0
 
-	# Panel apparait
 	var t = create_tween()
 	t.set_ease(Tween.EASE_OUT)
 	t.set_trans(Tween.TRANS_BACK)
@@ -44,7 +74,7 @@ func _animate_entrance(is_new_best: bool):
 	t.parallel().tween_property(panel, "modulate:a", 1.0, 0.3)
 	await t.finished
 
-	# Score counter animation (compte de 0 au score final)
+	# Score counter animation
 	var count_tween = create_tween()
 	count_tween.set_ease(Tween.EASE_OUT)
 	count_tween.set_trans(Tween.TRANS_CUBIC)
@@ -57,11 +87,9 @@ func _animate_entrance(is_new_best: bool):
 
 	await count_tween.finished
 
-	# Afficher les stats
 	if is_new_best:
 		high_score_label.text = "NEW BEST!"
 		high_score_label.add_theme_color_override("font_color", Color(1, 1, 0, 1))
-		# Pulsation sur new best
 		var pulse = create_tween().set_loops(3)
 		pulse.tween_property(high_score_label, "modulate:a", 0.4, 0.2)
 		pulse.tween_property(high_score_label, "modulate:a", 1.0, 0.2)

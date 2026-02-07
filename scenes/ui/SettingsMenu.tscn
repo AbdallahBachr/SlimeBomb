@@ -1,6 +1,39 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/SettingsMenu.gd" id="1"]
+
+[sub_resource type="StyleBoxFlat" id="panel_style"]
+bg_color = Color(0.05, 0.05, 0.09, 0.97)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0, 0.8, 0.8, 0.4)
+corner_radius_top_left = 35
+corner_radius_top_right = 35
+corner_radius_bottom_right = 35
+corner_radius_bottom_left = 35
+
+[sub_resource type="StyleBoxFlat" id="slider_bg"]
+bg_color = Color(0.15, 0.15, 0.22, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="slider_fill"]
+bg_color = Color(0, 0.85, 0.85, 1)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="close_normal"]
+bg_color = Color(0.2, 0.2, 0.28, 1)
+corner_radius_top_left = 20
+corner_radius_top_right = 20
+corner_radius_bottom_right = 20
+corner_radius_bottom_left = 20
 
 [node name="SettingsMenu" type="Control"]
 layout_mode = 3
@@ -9,83 +42,132 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+process_mode = 3
 script = ExtResource("1")
 
-[node name="Background" type="ColorRect" parent="."]
+[node name="Overlay" type="ColorRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.08, 0.12, 0.20, 1)
+color = Color(0, 0, 0, 0.7)
 
-[node name="TitleLabel" type="Label" parent="."]
-layout_mode = 1
-anchors_preset = 5
-anchor_left = 0.5
-anchor_right = 0.5
-offset_left = -200.0
-offset_top = 300.0
-offset_right = 200.0
-offset_bottom = 400.0
-grow_horizontal = 2
-theme_override_font_sizes/font_size = 60
-text = "⚙️ SETTINGS"
-horizontal_alignment = 1
-
-[node name="VBoxContainer" type="VBoxContainer" parent="."]
+[node name="Panel" type="Panel" parent="."]
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -300.0
-offset_top = -100.0
-offset_right = 300.0
-offset_bottom = 200.0
+offset_left = -320.0
+offset_top = -340.0
+offset_right = 320.0
+offset_bottom = 340.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 30
+theme_override_styles/panel = SubResource("panel_style")
+pivot_offset = Vector2(320, 340)
 
-[node name="MusicLabel" type="Label" parent="VBoxContainer"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 35
-text = "🎵 Music Volume"
+[node name="TitleLabel" type="Label" parent="Panel"]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -200.0
+offset_top = 35.0
+offset_right = 200.0
+offset_bottom = 100.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 44
+theme_override_colors/font_color = Color(0, 1, 1, 1)
+text = "SETTINGS"
+horizontal_alignment = 1
 
-[node name="MusicSlider" type="HSlider" parent="VBoxContainer"]
-custom_minimum_size = Vector2(0, 50)
+[node name="VBox" type="VBoxContainer" parent="Panel"]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -270.0
+offset_top = -140.0
+offset_right = 270.0
+offset_bottom = 160.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 28
+
+[node name="MusicRow" type="HBoxContainer" parent="Panel/VBox"]
 layout_mode = 2
+theme_override_constants/separation = 15
+
+[node name="MusicLabel" type="Label" parent="Panel/VBox/MusicRow"]
+custom_minimum_size = Vector2(140, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+theme_override_colors/font_color = Color(0.75, 0.75, 0.85, 1)
+text = "MUSIC"
+
+[node name="MusicSlider" type="HSlider" parent="Panel/VBox/MusicRow"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+size_flags_horizontal = 3
 min_value = 0.0
 max_value = 1.0
-step = 0.1
+step = 0.05
 value = 0.7
 
-[node name="SFXLabel" type="Label" parent="VBoxContainer"]
+[node name="SFXRow" type="HBoxContainer" parent="Panel/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 35
-text = "🔊 SFX Volume"
+theme_override_constants/separation = 15
 
-[node name="SFXSlider" type="HSlider" parent="VBoxContainer"]
-custom_minimum_size = Vector2(0, 50)
+[node name="SFXLabel" type="Label" parent="Panel/VBox/SFXRow"]
+custom_minimum_size = Vector2(140, 0)
 layout_mode = 2
+theme_override_font_sizes/font_size = 26
+theme_override_colors/font_color = Color(0.75, 0.75, 0.85, 1)
+text = "SFX"
+
+[node name="SFXSlider" type="HSlider" parent="Panel/VBox/SFXRow"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+size_flags_horizontal = 3
 max_value = 1.0
-step = 0.1
+step = 0.05
 value = 1.0
 
-[node name="BackButton" type="Button" parent="."]
+[node name="ShakeRow" type="HBoxContainer" parent="Panel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 15
+
+[node name="ShakeLabel" type="Label" parent="Panel/VBox/ShakeRow"]
+custom_minimum_size = Vector2(140, 0)
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+theme_override_colors/font_color = Color(0.75, 0.75, 0.85, 1)
+text = "SHAKE"
+
+[node name="ShakeToggle" type="CheckButton" parent="Panel/VBox/ShakeRow"]
+layout_mode = 2
+button_pressed = true
+
+[node name="CloseButton" type="Button" parent="Panel"]
 layout_mode = 1
 anchors_preset = 7
 anchor_left = 0.5
 anchor_top = 1.0
 anchor_right = 0.5
 anchor_bottom = 1.0
-offset_left = -200.0
-offset_top = -250.0
-offset_right = 200.0
-offset_bottom = -150.0
+offset_left = -120.0
+offset_top = -90.0
+offset_right = 120.0
+offset_bottom = -30.0
 grow_horizontal = 2
 grow_vertical = 0
-theme_override_font_sizes/font_size = 40
-text = "← BACK"
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.8, 0.8, 0.9, 1)
+theme_override_styles/normal = SubResource("close_normal")
+text = "CLOSE"

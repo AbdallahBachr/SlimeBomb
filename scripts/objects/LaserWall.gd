@@ -8,10 +8,20 @@ enum WallType { CYAN, MAGENTA }
 var is_inverted: bool = false
 var original_type: WallType
 
+var wall_sound: AudioStream
+var particle_sound: AudioStream
+
 signal ball_destroyed(points: int)
 
 func _ready():
 	original_type = wall_type
+
+	# Load sounds
+	if wall_type == WallType.CYAN:
+		wall_sound = load("res://assets/sounds/blue_wall.mp3")
+	else:
+		wall_sound = load("res://assets/sounds/red_wall.mp3")
+	particle_sound = load("res://assets/sounds/particles_short.mp3")
 
 	# Connecter le signal de collision
 	body_entered.connect(_on_body_entered)
@@ -78,6 +88,14 @@ func _play_destruction_effect(ball: BallDragThrow):
 	var ball_pos = ball.global_position
 	var dir_x = -1.0 if wall_type == WallType.CYAN else 1.0
 
+	# Wall hit sound
+	_play_sound(wall_sound, ball_pos)
+
+	# Particle sound slightly delayed
+	get_tree().create_timer(0.1).timeout.connect(func():
+		_play_sound(particle_sound, ball_pos, -5.0)
+	)
+
 	# Couleur selon le type de balle
 	var ball_color = Color(0, 1, 1, 1)
 	match ball.ball_type:
@@ -105,6 +123,16 @@ func _play_destruction_effect(ball: BallDragThrow):
 		var p = _create_explosion_emitter(ball_pos, dir_x, Color(1, 1, 1, 1), star_textures[i])
 		get_parent().add_child(p)
 		p.emitting = true
+
+func _play_sound(stream: AudioStream, pos: Vector2, volume_db: float = 0.0):
+	var player = AudioStreamPlayer2D.new()
+	player.stream = stream
+	player.volume_db = volume_db
+	player.position = pos
+	player.bus = &"SFX"
+	get_parent().add_child(player)
+	player.play()
+	player.finished.connect(player.queue_free)
 
 func _create_explosion_emitter(pos: Vector2, dir_x: float, color: Color, tex: Texture2D) -> GPUParticles2D:
 	var particles = GPUParticles2D.new()

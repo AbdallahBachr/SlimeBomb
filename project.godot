@@ -20,10 +20,6 @@ run/main_scene="res://scenes/ui/MainMenu.tscn"
 config/features=PackedStringArray("4.6", "Mobile")
 config/icon="res://icon.svg"
 
-[gui]
-
-theme/custom="res://assets/game_theme.tres"
-
 [display]
 
 window/size/viewport_width=1080
@@ -33,6 +29,10 @@ window/size/window_height_override=900
 window/stretch/mode="canvas_items"
 window/stretch/aspect="keep"
 window/handheld/orientation=1
+
+[gui]
+
+theme/custom="res://assets/game_theme.tres"
 
 [input_devices]
 

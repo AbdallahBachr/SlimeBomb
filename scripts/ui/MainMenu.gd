@@ -7,13 +7,21 @@ extends Control
 @onready var high_score_label = $HighScoreLabel
 @onready var subtitle_label = $SubtitleLabel
 
+var settings_menu: Control = null
+
 func _ready():
 	play_button.pressed.connect(_on_play_pressed)
 	settings_button.pressed.connect(_on_settings_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
 
+	_load_settings_overlay()
 	_load_high_score()
 	_animate_entrance()
+
+func _load_settings_overlay():
+	var settings_scene = load("res://scenes/ui/SettingsMenu.tscn")
+	settings_menu = settings_scene.instantiate()
+	add_child(settings_menu)
 
 func _load_high_score():
 	if FileAccess.file_exists("user://highscore.save"):
@@ -26,7 +34,6 @@ func _load_high_score():
 		high_score_label.text = "BEST  0"
 
 func _animate_entrance():
-	# Tout invisible au départ
 	title_label.modulate.a = 0.0
 	subtitle_label.modulate.a = 0.0
 	high_score_label.modulate.a = 0.0
@@ -34,7 +41,6 @@ func _animate_entrance():
 	settings_button.modulate.a = 0.0
 	quit_button.modulate.a = 0.0
 
-	# Titre slide depuis le haut
 	title_label.position.y -= 80
 	var orig_title_y = title_label.position.y + 80
 
@@ -42,22 +48,14 @@ func _animate_entrance():
 	t.set_ease(Tween.EASE_OUT)
 	t.set_trans(Tween.TRANS_CUBIC)
 
-	# Titre
 	t.tween_property(title_label, "modulate:a", 1.0, 0.6)
 	t.parallel().tween_property(title_label, "position:y", orig_title_y, 0.6)
-
-	# Subtitle
 	t.tween_property(subtitle_label, "modulate:a", 1.0, 0.4).set_delay(0.1)
-
-	# High score
 	t.tween_property(high_score_label, "modulate:a", 1.0, 0.4).set_delay(0.1)
-
-	# Boutons en cascade
 	t.tween_property(play_button, "modulate:a", 1.0, 0.3).set_delay(0.1)
 	t.tween_property(settings_button, "modulate:a", 1.0, 0.3).set_delay(0.05)
 	t.tween_property(quit_button, "modulate:a", 1.0, 0.3).set_delay(0.05)
 
-	# Pulsation titre
 	await t.finished
 	_animate_title_pulse()
 
@@ -69,7 +67,6 @@ func _animate_title_pulse():
 	tween.tween_property(title_label, "scale", Vector2(1.0, 1.0), 1.5)
 
 func _on_play_pressed():
-	# Transition de sortie
 	var t = create_tween()
 	t.set_ease(Tween.EASE_IN)
 	t.set_trans(Tween.TRANS_CUBIC)
@@ -78,7 +75,8 @@ func _on_play_pressed():
 	get_tree().change_scene_to_file("res://scenes/minigames/DragThrowGame.tscn")
 
 func _on_settings_pressed():
-	get_tree().change_scene_to_file("res://scenes/ui/SettingsMenu.tscn")
+	if settings_menu:
+		settings_menu.show_settings()
 
 func _on_quit_pressed():
 	get_tree().quit()

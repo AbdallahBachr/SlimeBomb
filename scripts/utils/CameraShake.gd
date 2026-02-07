@@ -26,7 +26,17 @@ func _process(delta):
 		offset = default_offset
 
 func shake(intensity: float = 10.0, duration: float = 0.3):
-	"""Déclencher un shake avec intensité et durée"""
+	# Check if shake is disabled in settings
+	if FileAccess.file_exists("user://settings.save"):
+		var file = FileAccess.open("user://settings.save", FileAccess.READ)
+		if file:
+			file.get_float()  # music
+			file.get_float()  # sfx
+			var shake_enabled = file.get_8() == 1
+			file.close()
+			if not shake_enabled:
+				return
+
 	shake_amount = intensity
 
 	# Optional: fade out progressif avec tween
