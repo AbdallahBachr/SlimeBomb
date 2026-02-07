@@ -5,14 +5,38 @@ enum WallType { CYAN, MAGENTA }
 
 @export var wall_type: WallType = WallType.CYAN
 
+var is_inverted: bool = false
+var original_type: WallType
+
 signal ball_destroyed(points: int)
 
 func _ready():
+	original_type = wall_type
+
 	# Connecter le signal de collision
 	body_entered.connect(_on_body_entered)
 
 	# Setup visuals selon le type
 	_setup_visuals()
+
+func set_inverted(inverted: bool):
+	is_inverted = inverted
+	if inverted:
+		# Swap visual: CYAN becomes MAGENTA and vice versa
+		if original_type == WallType.CYAN:
+			wall_type = WallType.MAGENTA
+		else:
+			wall_type = WallType.CYAN
+	else:
+		wall_type = original_type
+	_setup_visuals()
+
+	# Flash animation on swap
+	if has_node("Sprite2D"):
+		var sprite = $Sprite2D
+		var tween = create_tween()
+		tween.tween_property(sprite, "modulate", Color(2, 2, 2, 1), 0.1)
+		tween.tween_property(sprite, "modulate", Color(1, 1, 1, 1), 0.3)
 
 func _setup_visuals():
 	var sprite = $Sprite2D if has_node("Sprite2D") else null
@@ -27,7 +51,7 @@ func _on_body_entered(body):
 	if body is BallDragThrow:
 		var ball = body as BallDragThrow
 
-		# Vérifier si la balle correspond au mur
+		# Vérifier si la balle correspond au mur (current type, not original)
 		var match_found = false
 
 		if wall_type == WallType.CYAN and ball.ball_type == BallDragThrow.BallType.CYAN:
@@ -51,40 +75,66 @@ func _on_body_entered(body):
 			_destroy_wrong_ball(ball)
 
 func _play_destruction_effect(ball: BallDragThrow):
-	# Créer des particules à la position de la balle
+	var ball_pos = ball.global_position
+	var dir_x = -1.0 if wall_type == WallType.CYAN else 1.0
+
+	# Couleur selon le type de balle
+	var ball_color = Color(0, 1, 1, 1)
+	match ball.ball_type:
+		BallDragThrow.BallType.CYAN:
+			ball_color = Color(0, 1, 1, 1)
+		BallDragThrow.BallType.MAGENTA:
+			ball_color = Color(1, 0, 1, 1)
+		BallDragThrow.BallType.YELLOW:
+			ball_color = Color(1, 1, 0, 1)
+
+	var star_textures = [
+		load("res://assets/particles/star4.svg"),
+		load("res://assets/particles/star6.svg"),
+		load("res://assets/particles/cross_diamond.svg"),
+	]
+
+	# Colored star explosions (3 emitters)
+	for i in range(star_textures.size()):
+		var p = _create_explosion_emitter(ball_pos, dir_x, ball_color, star_textures[i])
+		get_parent().add_child(p)
+		p.emitting = true
+
+	# White star explosions (3 emitters)
+	for i in range(star_textures.size()):
+		var p = _create_explosion_emitter(ball_pos, dir_x, Color(1, 1, 1, 1), star_textures[i])
+		get_parent().add_child(p)
+		p.emitting = true
+
+func _create_explosion_emitter(pos: Vector2, dir_x: float, color: Color, tex: Texture2D) -> GPUParticles2D:
 	var particles = GPUParticles2D.new()
-	particles.position = ball.global_position
+	particles.position = pos
 	particles.emitting = false
-	particles.amount = 30
-	particles.lifetime = 0.8
+	particles.amount = 8
+	particles.lifetime = 0.9
 	particles.one_shot = true
 	particles.explosiveness = 1.0
+	particles.texture = tex
 
-	# Material des particules
-	var material = ParticleProcessMaterial.new()
-	material.direction = Vector3(-1 if wall_type == WallType.CYAN else 1, 0, 0)
-	material.spread = 60.0
-	material.initial_velocity_min = 200.0
-	material.initial_velocity_max = 400.0
-	material.gravity = Vector3(0, 300, 0)
-	material.scale_min = 1.0
-	material.scale_max = 2.0
+	var mat = ParticleProcessMaterial.new()
+	mat.direction = Vector3(dir_x, 0, 0)
+	mat.spread = 70.0
+	mat.initial_velocity_min = 250.0
+	mat.initial_velocity_max = 500.0
+	mat.gravity = Vector3(0, 250, 0)
+	mat.scale_min = 0.6
+	mat.scale_max = 1.5
+	mat.color = color
+	mat.angular_velocity_min = -180.0
+	mat.angular_velocity_max = 180.0
+	mat.particle_flag_disable_z = true
 
-	# Couleur selon le type de laser (Color Switch style)
-	if wall_type == WallType.CYAN:
-		material.color = Color(0.0, 1.0, 1.0, 1.0)  # Cyan néon
-	else:
-		material.color = Color(1.0, 0.0, 1.0, 1.0)  # Magenta néon
+	particles.process_material = mat
 
-	particles.process_material = material
+	# Auto-cleanup
+	particles.finished.connect(particles.queue_free)
 
-	# Ajouter au monde
-	get_parent().add_child(particles)
-	particles.emitting = true
-
-	# Détruire après l'animation
-	await get_tree().create_timer(1.0).timeout
-	particles.queue_free()
+	return particles
 
 func _destroy_wrong_ball(ball: BallDragThrow):
 	# Mauvaise couleur = destruction immédiate sans points

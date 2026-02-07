@@ -4,18 +4,31 @@ class_name BallDragThrow
 enum BallType { CYAN, MAGENTA, YELLOW, BOMB }
 
 @export var ball_type: BallType = BallType.CYAN
-@export var throw_force_multiplier: float = 3.0
+@export var throw_speed: float = 1800.0  # Vitesse max du jet
+@export var throw_speed_min: float = 600.0  # Vitesse min du jet
 
 var is_grabbed: bool = false
 var is_thrown: bool = false
-var last_mouse_pos: Vector2 = Vector2.ZERO
-var throw_velocity: Vector2 = Vector2.ZERO
-var velocity_history: Array[Vector2] = []  # Pour smooth throw
+
+# Throw tracking - on stocke les positions souris avec timestamps
+var mouse_positions: Array[Vector2] = []
+var mouse_times: Array[float] = []
+const MOUSE_HISTORY_DURATION: float = 0.1  # Seulement les 100ms recents
 
 # Trail effect
 var trail_line: Line2D = null
 var trail_points: Array[Vector2] = []
-const MAX_TRAIL_POINTS = 20
+const MAX_TRAIL_POINTS: int = 25
+var trail_fade_timer: float = 0.0
+const TRAIL_FADE_DURATION: float = 0.5
+
+# Acceleration pattern (late-game)
+var has_accel_pattern: bool = false
+var accel_timer: float = 0.0
+var base_gravity: float = 0.15
+
+# Wall inversion awareness
+var walls_inverted: bool = false
 
 signal ball_scored(points: int)
 signal ball_missed()
@@ -25,18 +38,18 @@ func _ready():
 	_setup_visuals()
 	_setup_trail()
 
-	# Désactiver la gravité quand on grab
-	gravity_scale = 0.3
-
-	# Enable input
 	input_event.connect(_on_input_event)
 
-	# Rotation pour le fun
 	rotation = randf_range(0, TAU)
-	angular_velocity = randf_range(-2, 2)
+	angular_velocity = randf_range(-1.5, 1.5)
 
 func _setup_visuals():
 	var sprite = $Sprite2D if has_node("Sprite2D") else null
+
+	# Remove GlowParticles - no ambient particles on balls
+	if has_node("GlowParticles"):
+		$GlowParticles.queue_free()
+
 	if sprite:
 		match ball_type:
 			BallType.CYAN:
@@ -47,76 +60,81 @@ func _setup_visuals():
 				sprite.texture = load("res://assets/ball_yellow_glow.svg")
 			BallType.BOMB:
 				sprite.texture = load("res://assets/bomb_glow.svg")
-				# Animation de pulsation SMOOTH
 				var tween = create_tween().set_loops()
-				tween.tween_property(sprite, "scale", Vector2(1.08, 1.08), 0.5).set_ease(Tween.EASE_IN_OUT)
-				tween.tween_property(sprite, "scale", Vector2(1.0, 1.0), 0.5).set_ease(Tween.EASE_IN_OUT)
+				tween.tween_property(sprite, "scale", Vector2(1.9, 1.9), 0.5).set_ease(Tween.EASE_IN_OUT)
+				tween.tween_property(sprite, "scale", Vector2(1.8, 1.8), 0.5).set_ease(Tween.EASE_IN_OUT)
 
 func _setup_trail():
-	# Créer le trail line2D pour l'effet de trainée
 	trail_line = Line2D.new()
-	trail_line.width = 8.0
-	trail_line.default_color = Color(1, 1, 1, 0.6)
+	trail_line.width = 12.0
 
-	# Gradient pour fade effect
+	# Gradient: transparent -> opaque
 	var gradient = Gradient.new()
-	gradient.add_point(0.0, Color(1, 1, 1, 0))  # Transparent au début
-	gradient.add_point(1.0, Color(1, 1, 1, 0.8))  # Opaque à la fin
-	trail_line.width_curve = null
+	gradient.set_color(0, Color(1, 1, 1, 0))
+	gradient.set_color(1, Color(1, 1, 1, 0.7))
 	trail_line.gradient = gradient
 
-	# Couleur selon le type de balle (Color Switch style)
+	# Width curve: thin -> thick
+	var curve = Curve.new()
+	curve.add_point(Vector2(0, 0.2))
+	curve.add_point(Vector2(1, 1.0))
+	trail_line.width_curve = curve
+
+	# Couleur selon le type
 	match ball_type:
 		BallType.CYAN:
-			trail_line.default_color = Color(0.0, 1.0, 1.0, 0.6)  # Cyan
+			trail_line.default_color = Color(0.0, 1.0, 1.0, 0.7)
 		BallType.MAGENTA:
-			trail_line.default_color = Color(1.0, 0.0, 1.0, 0.6)  # Magenta
+			trail_line.default_color = Color(1.0, 0.0, 1.0, 0.7)
 		BallType.YELLOW:
-			trail_line.default_color = Color(1.0, 1.0, 0.0, 0.6)  # Yellow
+			trail_line.default_color = Color(1.0, 1.0, 0.0, 0.7)
 		BallType.BOMB:
-			trail_line.default_color = Color(0.3, 0.3, 0.3, 0.6)
+			trail_line.default_color = Color(0.4, 0.4, 0.4, 0.5)
 
-	# Ajout smooth
 	trail_line.joint_mode = Line2D.LINE_JOINT_ROUND
 	trail_line.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	trail_line.end_cap_mode = Line2D.LINE_CAP_ROUND
 	trail_line.antialiased = true
+	trail_line.visible = false
 
-	# Ajouter au parent pour éviter rotation
 	call_deferred("_add_trail_to_parent")
 
 func _add_trail_to_parent():
 	if get_parent():
 		get_parent().add_child(trail_line)
-		trail_line.z_index = -1  # Derrière la balle
+		trail_line.z_index = -1
 
-func _on_input_event(viewport: Viewport, event: InputEvent, shape_idx: int):
+func _on_input_event(_viewport: Viewport, event: InputEvent, _shape_idx: int):
 	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_LEFT:
-			if event.pressed:
-				_grab()
-			else:
-				_release()
+		if event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			_grab()
+
+func _input(event):
+	if is_grabbed and event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+			_release()
 
 func _grab():
 	if is_thrown:
 		return
 
 	is_grabbed = true
-
-	# Stop physics
 	freeze = true
 
-	# Effet visuel
+	# Scale up smooth
 	var tween = create_tween()
-	tween.tween_property(self, "scale", Vector2(1.15, 1.15), 0.1)
+	tween.tween_property(self, "scale", Vector2(1.15, 1.15), 0.08)
 
-	# Clear trail
+	# Reset tracking
+	mouse_positions.clear()
+	mouse_times.clear()
 	trail_points.clear()
+	trail_fade_timer = 0.0
+
 	if trail_line:
 		trail_line.visible = true
-
-	last_mouse_pos = get_global_mouse_position()
+		trail_line.modulate.a = 1.0
+		trail_line.clear_points()
 
 func _release():
 	if not is_grabbed:
@@ -124,135 +142,150 @@ func _release():
 
 	is_grabbed = false
 	is_thrown = true
-
-	# Réactiver physics
 	freeze = false
 
-	# Fade out trail smoothly
-	if trail_line:
-		var tween = create_tween()
-		tween.tween_property(trail_line, "modulate:a", 0.0, 0.3)
-		tween.tween_callback(func():
-			if trail_line:
-				trail_line.visible = false
-				trail_line.modulate.a = 1.0
-		)
+	# Calculer la velocite a partir des positions recentes
+	var throw_vel = _calculate_throw_velocity()
 
-	# Calculer la vélocité moyenne du throw (SMOOTH!)
-	if velocity_history.size() > 0:
-		var avg_velocity = Vector2.ZERO
-		for v in velocity_history:
-			avg_velocity += v
-		avg_velocity /= velocity_history.size()
-		throw_velocity = avg_velocity * throw_force_multiplier
-	else:
-		# Fallback si pas d'historique
-		var current_mouse_pos = get_global_mouse_position()
-		throw_velocity = (current_mouse_pos - last_mouse_pos) * throw_force_multiplier
+	# Verifier la direction (avec prise en compte de l'inversion)
+	_check_throw_direction(throw_vel)
 
-	velocity_history.clear()
+	# Appliquer - smooth, pas de spike
+	linear_velocity = throw_vel
+	gravity_scale = 0.0  # Pas de gravite pendant le vol
 
-	# Vérifier la direction
-	_check_throw_direction(throw_velocity)
-
-	# Appliquer la force
-	linear_velocity = throw_velocity
-
-	# Effet visuel
+	# Scale back
 	var tween = create_tween()
-	tween.tween_property(self, "scale", Vector2(1.0, 1.0), 0.1)
+	tween.tween_property(self, "scale", Vector2(1.0, 1.0), 0.08)
+
+	# Start trail fade timer
+	trail_fade_timer = TRAIL_FADE_DURATION
+
+func _calculate_throw_velocity() -> Vector2:
+	if mouse_positions.size() < 2:
+		return Vector2.ZERO
+
+	# Prendre le deplacement total sur la periode
+	var oldest_pos = mouse_positions[0]
+	var newest_pos = mouse_positions[mouse_positions.size() - 1]
+	var oldest_time = mouse_times[0]
+	var newest_time = mouse_times[mouse_times.size() - 1]
+
+	var dt = newest_time - oldest_time
+	if dt < 0.001:
+		return Vector2.ZERO
+
+	var direction = (newest_pos - oldest_pos)
+	var speed = direction.length() / dt
+
+	# Clamp la vitesse pour eviter les spikes
+	speed = clamp(speed, throw_speed_min, throw_speed * 2.0)
+
+	# Normaliser et appliquer la vitesse
+	if direction.length() > 0:
+		return direction.normalized() * speed
+	return Vector2.ZERO
 
 func _check_throw_direction(velocity: Vector2):
-	"""Vérifie si le throw est dans la bonne direction"""
 	var dir_x = velocity.x
 
-	# Si c'est une bombe, c'est toujours un échec
 	if ball_type == BallType.BOMB:
 		bomb_exploded.emit()
 		_explode()
 		return
 
-	# Vérifier direction
-	var is_right = dir_x > 100  # Jeté vers la droite
-	var is_left = dir_x < -100  # Jeté vers la gauche
+	var is_right = dir_x > 50
+	var is_left = dir_x < -50
+
+	# Si murs inversés, on inverse la logique
+	var cyan_goes_right = not walls_inverted
+	var magenta_goes_left = not walls_inverted
 
 	var correct = false
-	if ball_type == BallType.CYAN and is_right:
-		correct = true
-	elif ball_type == BallType.MAGENTA and is_left:
-		correct = true
+	if ball_type == BallType.CYAN:
+		if cyan_goes_right and is_right:
+			correct = true
+		elif not cyan_goes_right and is_left:
+			correct = true
+	elif ball_type == BallType.MAGENTA:
+		if magenta_goes_left and is_left:
+			correct = true
+		elif not magenta_goes_left and is_right:
+			correct = true
 	elif ball_type == BallType.YELLOW and (is_left or is_right):
-		correct = true  # Yellow accepté des deux côtés
+		correct = true
 
 	if correct:
 		ball_scored.emit(10)
-		_success_effect()
 	else:
 		ball_missed.emit()
-		_fail_effect()
-
-func _input(event):
-	# Écouter le relâchement GLOBAL (même si souris sort de la balle)
-	if is_grabbed and event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
-			_release()
 
 func _process(delta):
+	var now = Time.get_ticks_msec() / 1000.0
+
+	# Acceleration pattern: sin wave on gravity
+	if has_accel_pattern and not is_grabbed and not is_thrown:
+		accel_timer += delta
+		var wave = sin(accel_timer * 3.0)  # Oscillation ~2s cycle
+		gravity_scale = base_gravity * (1.0 + wave * 0.7)  # 0.3x to 1.7x
+
 	if is_grabbed:
-		# Suivre la souris SMOOTHLY
+		# Suivre la souris smooth
 		var target_pos = get_global_mouse_position()
-		var prev_pos = global_position
-		global_position = global_position.lerp(target_pos, 0.3)  # Plus smooth
+		global_position = global_position.lerp(target_pos, 0.4)
 
-		# Calculer vélocité pour le throw
-		var velocity = (global_position - prev_pos) / delta
-		velocity_history.append(velocity)
+		# Enregistrer positions pour le throw
+		mouse_positions.append(get_global_mouse_position())
+		mouse_times.append(now)
 
-		# Garder seulement les 5 derniers frames
-		if velocity_history.size() > 5:
-			velocity_history.pop_front()
+		# Garder seulement les positions recentes
+		while mouse_times.size() > 0 and (now - mouse_times[0]) > MOUSE_HISTORY_DURATION:
+			mouse_positions.pop_front()
+			mouse_times.pop_front()
 
 		# Update trail
 		_update_trail()
 
-		last_mouse_pos = target_pos
+	elif is_thrown:
+		# La balle vole - continuer le trail
+		_update_trail()
+
+		# Fade out progressif du trail
+		if trail_fade_timer > 0:
+			trail_fade_timer -= delta
+			if trail_line:
+				trail_line.modulate.a = trail_fade_timer / TRAIL_FADE_DURATION
+		elif trail_line and trail_line.visible:
+			trail_line.visible = false
 
 func _update_trail():
-	if not trail_line:
+	if not trail_line or not trail_line.visible:
 		return
 
 	# Ajouter la position actuelle
 	trail_points.append(global_position)
 
 	# Limiter le nombre de points
-	if trail_points.size() > MAX_TRAIL_POINTS:
+	while trail_points.size() > MAX_TRAIL_POINTS:
 		trail_points.pop_front()
 
-	# Mettre à jour la Line2D
+	# Mettre a jour la Line2D
 	trail_line.clear_points()
 	for point in trail_points:
 		trail_line.add_point(point)
 
-func _success_effect():
-	if has_node("SuccessParticles"):
-		$SuccessParticles.emitting = true
-
-func _fail_effect():
-	var sprite = $Sprite2D
-	var tween = create_tween()
-	tween.tween_property(sprite, "modulate", Color(1, 0.5, 0.5), 0.1)
-	tween.tween_property(sprite, "modulate", Color(1, 1, 1), 0.1)
-
 func _explode():
-	if has_node("ExplosionParticles"):
-		$ExplosionParticles.emitting = true
-
 	if has_node("Sprite2D"):
 		$Sprite2D.visible = false
 
-	# Nettoyer le trail
 	if trail_line:
 		trail_line.queue_free()
+		trail_line = null
 
 	await get_tree().create_timer(0.5).timeout
 	queue_free()
+
+func _exit_tree():
+	# Nettoyer le trail quand la balle est detruite
+	if trail_line and is_instance_valid(trail_line):
+		trail_line.queue_free()

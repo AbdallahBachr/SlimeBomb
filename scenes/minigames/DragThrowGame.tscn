@@ -55,14 +55,14 @@ horizontal_alignment = 1
 pivot_offset = Vector2(100, 40)
 
 [node name="LivesLabel" type="Label" parent="CanvasLayer"]
-offset_left = 50.0
-offset_top = 2200.0
+offset_left = 40.0
+offset_top = 80.0
 offset_right = 200.0
-offset_bottom = 2280.0
+offset_bottom = 140.0
 mouse_filter = 2
-theme_override_font_sizes/font_size = 50
-theme_override_colors/font_color = Color(1, 0.2, 0.2, 0.7)
-text = "❤️ 3"
+theme_override_font_sizes/font_size = 36
+theme_override_colors/font_color = Color(1, 0, 1, 0.6)
+text = "III"
 horizontal_alignment = 0
 
 [node name="ComboLabel" type="Label" parent="CanvasLayer"]
@@ -78,6 +78,17 @@ horizontal_alignment = 1
 vertical_alignment = 1
 pivot_offset = Vector2(250, 65)
 visible = false
+
+[node name="PauseButton" type="Button" parent="CanvasLayer"]
+offset_left = 920.0
+offset_top = 60.0
+offset_right = 1040.0
+offset_bottom = 140.0
+mouse_filter = 0
+theme_override_font_sizes/font_size = 40
+theme_override_colors/font_color = Color(0.5, 0.5, 0.6, 0.7)
+text = "II"
+flat = true
 
 [node name="PauseMenu" parent="CanvasLayer" instance=ExtResource("3")]
 visible = false
