@@ -1,0 +1,21 @@
+<svg width="128" height="128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Glow effect -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="8" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Cercle simple avec glow -->
+  <circle cx="64" cy="64" r="50" fill="#ff4757" filter="url(#glow)"/>
+
+  <!-- Cercle intérieur plus clair -->
+  <circle cx="64" cy="64" r="45" fill="#ff4757"/>
+
+  <!-- Highlight minimaliste -->
+  <circle cx="52" cy="52" r="15" fill="#ffffff" opacity="0.4"/>
+</svg>

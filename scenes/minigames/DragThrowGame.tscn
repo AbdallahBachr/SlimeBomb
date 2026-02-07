@@ -1,0 +1,86 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/minigames/DragThrowGame.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/objects/BallDragThrow.tscn" id="2"]
+[ext_resource type="PackedScene" path="res://scenes/ui/PauseMenu.tscn" id="3"]
+[ext_resource type="PackedScene" path="res://scenes/ui/GameOverMenu.tscn" id="4"]
+[ext_resource type="PackedScene" path="res://scenes/objects/LaserWall.tscn" id="5"]
+[ext_resource type="Script" path="res://scripts/utils/CameraShake.gd" id="6"]
+[ext_resource type="PackedScene" path="res://scenes/objects/KillZone.tscn" id="7"]
+
+[node name="DragThrowGame" type="Node2D"]
+script = ExtResource("1")
+ball_scene = ExtResource("2")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(540, 1200)
+script = ExtResource("6")
+
+[node name="Background" type="ColorRect" parent="."]
+offset_left = -100.0
+offset_top = -200.0
+offset_right = 1200.0
+offset_bottom = 2600.0
+color = Color(0, 0, 0, 1)
+z_index = -100
+mouse_filter = 2
+
+[node name="LaserWallLeft" parent="." instance=ExtResource("5")]
+position = Vector2(25, 1200)
+wall_type = 1
+
+[node name="LaserWallRight" parent="." instance=ExtResource("5")]
+position = Vector2(1055, 1200)
+wall_type = 0
+
+[node name="KillZone" parent="." instance=ExtResource("7")]
+position = Vector2(540, 2450)
+
+[node name="SpawnTimer" type="Timer" parent="."]
+wait_time = 1.5
+autostart = true
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="ScoreLabel" type="Label" parent="CanvasLayer"]
+offset_left = 440.0
+offset_top = 100.0
+offset_right = 640.0
+offset_bottom = 180.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 80
+theme_override_colors/font_color = Color(0.9, 0.9, 1, 0.9)
+text = "0"
+horizontal_alignment = 1
+pivot_offset = Vector2(100, 40)
+
+[node name="LivesLabel" type="Label" parent="CanvasLayer"]
+offset_left = 50.0
+offset_top = 2200.0
+offset_right = 200.0
+offset_bottom = 2280.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 50
+theme_override_colors/font_color = Color(1, 0.2, 0.2, 0.7)
+text = "❤️ 3"
+horizontal_alignment = 0
+
+[node name="ComboLabel" type="Label" parent="CanvasLayer"]
+offset_left = 290.0
+offset_top = 250.0
+offset_right = 790.0
+offset_bottom = 380.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0, 1, 1, 1)
+theme_override_font_sizes/font_size = 100
+text = "x0"
+horizontal_alignment = 1
+vertical_alignment = 1
+pivot_offset = Vector2(250, 65)
+visible = false
+
+[node name="PauseMenu" parent="CanvasLayer" instance=ExtResource("3")]
+visible = false
+
+[node name="GameOverMenu" parent="CanvasLayer" instance=ExtResource("4")]
+visible = false

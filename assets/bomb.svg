@@ -1,0 +1,52 @@
+<svg width="128" height="128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Dégradé noir/gris -->
+    <radialGradient id="bombGrad" cx="40%" cy="40%">
+      <stop offset="0%" style="stop-color:#4a4a4a;stop-opacity:1" />
+      <stop offset="60%" style="stop-color:#2d2d2d;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0a0a0a;stop-opacity:1" />
+    </radialGradient>
+
+    <!-- Dégradé de la mèche -->
+    <linearGradient id="fuseGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#d4a574;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#8b6f47;stop-opacity:1" />
+    </linearGradient>
+
+    <!-- Ombre -->
+    <filter id="shadowBomb">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="5"/>
+      <feOffset dx="0" dy="7" result="offsetblur"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.6"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+
+  <!-- Bombe principale -->
+  <circle cx="64" cy="68" r="50" fill="url(#bombGrad)" filter="url(#shadowBomb)"/>
+
+  <!-- Reflet subtil -->
+  <ellipse cx="50" cy="52" rx="20" ry="25" fill="#ffffff" opacity="0.15"/>
+
+  <!-- Mèche -->
+  <rect x="60" y="10" width="8" height="22" rx="4" fill="url(#fuseGrad)"/>
+
+  <!-- Étincelle au bout de la mèche -->
+  <circle cx="64" cy="8" r="6" fill="#ff6b00">
+    <animate attributeName="opacity" values="1;0.3;1" dur="0.5s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="64" cy="8" r="4" fill="#ffdd00">
+    <animate attributeName="opacity" values="1;0.5;1" dur="0.3s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- Particules autour de l'étincelle -->
+  <circle cx="58" cy="6" r="2" fill="#ff6b00" opacity="0.8">
+    <animate attributeName="opacity" values="0.8;0;0.8" dur="0.6s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="70" cy="6" r="2" fill="#ffaa00" opacity="0.7">
+    <animate attributeName="opacity" values="0.7;0;0.7" dur="0.5s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- Highlight métallique -->
+  <circle cx="64" cy="68" r="50" fill="none" stroke="#ffffff" stroke-width="1" opacity="0.2"/>
+</svg>

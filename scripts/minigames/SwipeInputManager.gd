@@ -43,18 +43,19 @@ func _handle_drag(event: InputEventScreenDrag):
 
 func _start_touch(pos: Vector2):
 	is_touching = true
-	# Convertir position écran en position monde IMMÉDIATEMENT
-	var world_pos = _screen_to_world(pos)
+	# SIMPLE: Utiliser directement get_global_mouse_position() au moment du touch
+	var world_pos = get_global_mouse_position()
 	touch_start_pos = world_pos
 	touch_current_pos = world_pos
 	touch_start_time = Time.get_ticks_msec() / 1000.0
 	touch_trail.clear()
 	touch_trail.append(world_pos)
+	print("🖱️ Touch start at world pos: ", world_pos)
 
 func _update_touch(pos: Vector2):
 	if is_touching:
-		# Convertir position écran en position monde
-		var world_pos = _screen_to_world(pos)
+		# Utiliser la position actuelle de la souris dans le monde
+		var world_pos = get_global_mouse_position()
 		touch_current_pos = world_pos
 		touch_trail.append(world_pos)
 
@@ -62,18 +63,13 @@ func _update_touch(pos: Vector2):
 		if touch_trail.size() > 10:
 			touch_trail.pop_front()
 
-func _screen_to_world(screen_pos: Vector2) -> Vector2:
-	"""Convertit une position écran en position monde"""
-	# Maintenant qu'on est un Node2D, on peut utiliser get_global_mouse_position()
-	# qui donne directement la position dans le monde 2D
-	return get_global_mouse_position()
-
 func _end_touch(pos: Vector2):
 	if not is_touching:
 		return
 
 	is_touching = false
-	touch_current_pos = pos
+	# Utiliser la position monde actuelle
+	touch_current_pos = get_global_mouse_position()
 
 	var swipe_vector = touch_current_pos - touch_start_pos
 	var swipe_distance = swipe_vector.length()

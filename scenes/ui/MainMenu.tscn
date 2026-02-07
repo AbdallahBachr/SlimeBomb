@@ -1,0 +1,164 @@
+[gd_scene load_steps=7 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/MainMenu.gd" id="1"]
+
+[sub_resource type="StyleBoxFlat" id="play_normal"]
+bg_color = Color(0, 0.9, 0.9, 1)
+corner_radius_top_left = 30
+corner_radius_top_right = 30
+corner_radius_bottom_right = 30
+corner_radius_bottom_left = 30
+shadow_color = Color(0, 0.6, 0.6, 0.4)
+shadow_size = 8
+
+[sub_resource type="StyleBoxFlat" id="play_hover"]
+bg_color = Color(0, 1, 1, 1)
+corner_radius_top_left = 30
+corner_radius_top_right = 30
+corner_radius_bottom_right = 30
+corner_radius_bottom_left = 30
+shadow_color = Color(0, 0.8, 0.8, 0.6)
+shadow_size = 12
+
+[sub_resource type="StyleBoxFlat" id="play_pressed"]
+bg_color = Color(0, 0.7, 0.7, 1)
+corner_radius_top_left = 30
+corner_radius_top_right = 30
+corner_radius_bottom_right = 30
+corner_radius_bottom_left = 30
+
+[sub_resource type="StyleBoxFlat" id="secondary_normal"]
+bg_color = Color(0.12, 0.12, 0.18, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.3, 0.3, 0.4, 1)
+corner_radius_top_left = 25
+corner_radius_top_right = 25
+corner_radius_bottom_right = 25
+corner_radius_bottom_left = 25
+
+[sub_resource type="StyleBoxFlat" id="secondary_hover"]
+bg_color = Color(0.18, 0.18, 0.25, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0, 0.9, 0.9, 0.6)
+corner_radius_top_left = 25
+corner_radius_top_right = 25
+corner_radius_bottom_right = 25
+corner_radius_bottom_left = 25
+
+[node name="MainMenu" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.02, 0.02, 0.04, 1)
+
+[node name="TitleLabel" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -400.0
+offset_top = 280.0
+offset_right = 400.0
+offset_bottom = 430.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 96
+theme_override_colors/font_color = Color(0, 1, 1, 1)
+text = "SLIME BOMB"
+horizontal_alignment = 1
+vertical_alignment = 1
+pivot_offset = Vector2(400, 75)
+
+[node name="SubtitleLabel" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -300.0
+offset_top = 440.0
+offset_right = 300.0
+offset_bottom = 500.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.5, 0.5, 0.6, 1)
+text = "DRAG  /  THROW  /  SCORE"
+horizontal_alignment = 1
+
+[node name="HighScoreLabel" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -250.0
+offset_top = 550.0
+offset_right = 250.0
+offset_bottom = 610.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 36
+theme_override_colors/font_color = Color(1, 0, 1, 0.8)
+text = "BEST  0"
+horizontal_alignment = 1
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -220.0
+offset_top = 150.0
+offset_right = 220.0
+offset_bottom = 500.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 25
+
+[node name="PlayButton" type="Button" parent="VBoxContainer"]
+custom_minimum_size = Vector2(440, 90)
+layout_mode = 2
+theme_override_font_sizes/font_size = 38
+theme_override_colors/font_color = Color(0.02, 0.02, 0.04, 1)
+theme_override_colors/font_hover_color = Color(0.02, 0.02, 0.04, 1)
+theme_override_colors/font_pressed_color = Color(0.02, 0.02, 0.04, 1)
+theme_override_styles/normal = SubResource("play_normal")
+theme_override_styles/hover = SubResource("play_hover")
+theme_override_styles/pressed = SubResource("play_pressed")
+text = "PLAY"
+
+[node name="SettingsButton" type="Button" parent="VBoxContainer"]
+custom_minimum_size = Vector2(440, 75)
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+theme_override_colors/font_color = Color(0.7, 0.7, 0.8, 1)
+theme_override_colors/font_hover_color = Color(0, 1, 1, 1)
+theme_override_styles/normal = SubResource("secondary_normal")
+theme_override_styles/hover = SubResource("secondary_hover")
+text = "SETTINGS"
+
+[node name="QuitButton" type="Button" parent="VBoxContainer"]
+custom_minimum_size = Vector2(440, 75)
+layout_mode = 2
+theme_override_font_sizes/font_size = 30
+theme_override_colors/font_color = Color(0.7, 0.7, 0.8, 1)
+theme_override_colors/font_hover_color = Color(1, 0, 1, 1)
+theme_override_styles/normal = SubResource("secondary_normal")
+theme_override_styles/hover = SubResource("secondary_hover")
+text = "QUIT"

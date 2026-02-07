@@ -108,10 +108,12 @@ func _spawn_ball():
 	var rand_val = randf()
 	if rand_val < bomb_spawn_chance:
 		ball.ball_type = Ball.BallType.BOMB
-	elif rand_val < 0.5 + (bomb_spawn_chance / 2):
-		ball.ball_type = Ball.BallType.GREEN
+	elif rand_val < 0.35 + (bomb_spawn_chance / 2):
+		ball.ball_type = Ball.BallType.CYAN
+	elif rand_val < 0.7 + (bomb_spawn_chance / 2):
+		ball.ball_type = Ball.BallType.MAGENTA
 	else:
-		ball.ball_type = Ball.BallType.RED
+		ball.ball_type = Ball.BallType.YELLOW
 
 	# Augmenter la gravité avec la difficulté (commence lent, devient rapide)
 	var difficulty_factor = 0.3 + (time_elapsed / 30.0)  # Commence à 0.3, +1.0 après 30s

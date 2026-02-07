@@ -1,9 +1,9 @@
 extends RigidBody2D
 class_name Ball
 
-enum BallType { GREEN, RED, BOMB }
+enum BallType { CYAN, MAGENTA, YELLOW, BOMB }
 
-@export var ball_type: BallType = BallType.GREEN
+@export var ball_type: BallType = BallType.CYAN
 @export var swipe_force: float = 2000.0  # Augmenté pour être plus visible
 @export var upward_boost: float = -500.0  # Augmenté pour être plus visible
 
@@ -30,17 +30,20 @@ func _setup_visuals():
 	var collision = $CollisionShape2D if has_node("CollisionShape2D") else null
 
 	if sprite:
+		# Charger le sprite spécifique selon le type
 		match ball_type:
-			BallType.GREEN:
-				sprite.self_modulate = Color(0.2, 1.0, 0.3)  # Vert éclatant
-			BallType.RED:
-				sprite.self_modulate = Color(1.0, 0.2, 0.2)  # Rouge vif
+			BallType.CYAN:
+				sprite.texture = load("res://assets/ball_cyan_glow.svg")
+			BallType.MAGENTA:
+				sprite.texture = load("res://assets/ball_magenta_glow.svg")
+			BallType.YELLOW:
+				sprite.texture = load("res://assets/ball_yellow_glow.svg")
 			BallType.BOMB:
-				sprite.self_modulate = Color(0.1, 0.1, 0.1)  # Noir
-				# Ajouter une petite animation de pulsation pour la bombe
+				sprite.texture = load("res://assets/bomb_glow.svg")
+				# Animation de pulsation pour la bombe
 				var tween = create_tween().set_loops()
-				tween.tween_property(sprite, "scale", Vector2(1.1, 1.1), 0.5)
-				tween.tween_property(sprite, "scale", Vector2(1.0, 1.0), 0.5)
+				tween.tween_property(sprite, "scale", Vector2(1.05, 1.05), 0.3)
+				tween.tween_property(sprite, "scale", Vector2(1.0, 1.0), 0.3)
 
 func handle_swipe(swipe_direction: Vector2):
 	"""
@@ -66,9 +69,11 @@ func handle_swipe(swipe_direction: Vector2):
 
 	var correct_swipe = false
 
-	if ball_type == BallType.GREEN and is_swipe_right:
+	if ball_type == BallType.CYAN and is_swipe_right:
 		correct_swipe = true
-	elif ball_type == BallType.RED and is_swipe_left:
+	elif ball_type == BallType.MAGENTA and is_swipe_left:
+		correct_swipe = true
+	elif ball_type == BallType.YELLOW and (is_swipe_left or is_swipe_right):
 		correct_swipe = true
 
 	if correct_swipe:

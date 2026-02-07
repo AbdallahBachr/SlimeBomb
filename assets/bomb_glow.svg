@@ -1,0 +1,22 @@
+<svg width="128" height="128" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Glow effect -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Cercle principal noir/gris -->
+  <circle cx="64" cy="68" r="45" fill="#2d2d2d" filter="url(#glow)"/>
+
+  <!-- Cercle intérieur -->
+  <circle cx="64" cy="68" r="40" fill="#1a1a1a"/>
+
+  <!-- Croix de danger style minimaliste -->
+  <line x1="50" y1="54" x2="78" y2="82" stroke="#ff4757" stroke-width="4" stroke-linecap="round"/>
+  <line x1="78" y1="54" x2="50" y2="82" stroke="#ff4757" stroke-width="4" stroke-linecap="round"/>
+</svg>
