@@ -79,5 +79,6 @@ func _on_settings():
 
 func _on_menu():
 	menu_pressed.emit()
+	Engine.time_scale = 1.0
 	get_tree().paused = false
 	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")

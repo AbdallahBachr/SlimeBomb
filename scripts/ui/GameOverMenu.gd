@@ -11,6 +11,8 @@ extends Control
 var current_score: int = 0
 var high_score: int = 0
 var max_combo: int = 0
+var time_survived: String = "0:00"
+var accuracy_pct: float = 0.0
 var settings_menu: Control = null
 
 func _ready():
@@ -49,9 +51,11 @@ func _on_settings():
 	if settings_menu:
 		settings_menu.show_settings()
 
-func show_game_over(score: int, combo: int):
+func show_game_over(score: int, combo: int, time_str: String = "0:00", accuracy: float = 0.0):
 	current_score = score
 	max_combo = combo
+	time_survived = time_str
+	accuracy_pct = accuracy
 
 	_load_high_score()
 
@@ -99,6 +103,40 @@ func _animate_entrance(is_new_best: bool):
 
 	combo_label.text = "MAX COMBO  x" + str(max_combo)
 
+	# Stats row: time + accuracy
+	var vbox = $Panel/VBoxContainer
+	var stats_container = HBoxContainer.new()
+	stats_container.alignment = BoxContainer.ALIGNMENT_CENTER
+	stats_container.add_theme_constant_override("separation", 40)
+	vbox.add_child(stats_container)
+	vbox.move_child(stats_container, combo_label.get_index() + 1)
+
+	var time_label = Label.new()
+	time_label.text = time_survived
+	time_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	time_label.add_theme_font_size_override("font_size", 26)
+	time_label.add_theme_color_override("font_color", Color(0, 1, 1, 0.8))
+	time_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stats_container.add_child(time_label)
+
+	var accuracy_label = Label.new()
+	accuracy_label.text = "%d%%" % [int(accuracy_pct)]
+	accuracy_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	accuracy_label.add_theme_font_size_override("font_size", 26)
+	if accuracy_pct >= 80:
+		accuracy_label.add_theme_color_override("font_color", Color(1, 1, 0, 0.8))
+	elif accuracy_pct >= 50:
+		accuracy_label.add_theme_color_override("font_color", Color(0, 1, 0, 0.8))
+	else:
+		accuracy_label.add_theme_color_override("font_color", Color(1, 0.4, 0.4, 0.8))
+	accuracy_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stats_container.add_child(accuracy_label)
+
+	# Animate stats fade in
+	stats_container.modulate.a = 0.0
+	var st = create_tween()
+	st.tween_property(stats_container, "modulate:a", 1.0, 0.4).set_delay(0.2)
+
 func _load_high_score():
 	if FileAccess.file_exists("user://highscore.save"):
 		var file = FileAccess.open("user://highscore.save", FileAccess.READ)
@@ -113,7 +151,7 @@ func _save_high_score():
 		file.close()
 
 func _on_retry():
-	get_tree().reload_current_scene()
+	get_tree().change_scene_to_file("res://scenes/minigames/DragThrowGame.tscn")
 
 func _on_menu():
 	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")

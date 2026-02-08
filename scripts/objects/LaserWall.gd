@@ -10,29 +10,26 @@ var original_type: WallType
 
 var wall_sound: AudioStream
 var particle_sound: AudioStream
+var wrong_sound: AudioStream
 
 signal ball_destroyed(points: int)
 
 func _ready():
 	original_type = wall_type
 
-	# Load sounds
 	if wall_type == WallType.CYAN:
 		wall_sound = load("res://assets/sounds/blue_wall.mp3")
 	else:
 		wall_sound = load("res://assets/sounds/red_wall.mp3")
 	particle_sound = load("res://assets/sounds/particles_short.mp3")
+	wrong_sound = load("res://assets/sounds/red_wall.mp3")
 
-	# Connecter le signal de collision
 	body_entered.connect(_on_body_entered)
-
-	# Setup visuals selon le type
 	_setup_visuals()
 
 func set_inverted(inverted: bool):
 	is_inverted = inverted
 	if inverted:
-		# Swap visual: CYAN becomes MAGENTA and vice versa
 		if original_type == WallType.CYAN:
 			wall_type = WallType.MAGENTA
 		else:
@@ -41,7 +38,6 @@ func set_inverted(inverted: bool):
 		wall_type = original_type
 	_setup_visuals()
 
-	# Flash animation on swap
 	if has_node("Sprite2D"):
 		var sprite = $Sprite2D
 		var tween = create_tween()
@@ -61,7 +57,6 @@ func _on_body_entered(body):
 	if body is BallDragThrow:
 		var ball = body as BallDragThrow
 
-		# Vérifier si la balle correspond au mur (current type, not original)
 		var match_found = false
 
 		if wall_type == WallType.CYAN and ball.ball_type == BallDragThrow.BallType.CYAN:
@@ -69,34 +64,25 @@ func _on_body_entered(body):
 		elif wall_type == WallType.MAGENTA and ball.ball_type == BallDragThrow.BallType.MAGENTA:
 			match_found = true
 		elif ball.ball_type == BallDragThrow.BallType.YELLOW:
-			match_found = true  # Yellow accepté partout
+			match_found = true
 
 		if match_found:
-			# SUCCESS ! Détruire la balle et donner des points
 			ball_destroyed.emit(50)
-
-			# Effet visuel de succès
 			_play_destruction_effect(ball)
-
-			# Détruire la balle
 			ball.queue_free()
 		else:
-			# Mauvaise couleur, détruire la balle avec effet d'échec
 			_destroy_wrong_ball(ball)
 
 func _play_destruction_effect(ball: BallDragThrow):
 	var ball_pos = ball.global_position
 	var dir_x = -1.0 if wall_type == WallType.CYAN else 1.0
 
-	# Wall hit sound
 	_play_sound(wall_sound, ball_pos)
 
-	# Particle sound slightly delayed
 	get_tree().create_timer(0.1).timeout.connect(func():
 		_play_sound(particle_sound, ball_pos, -5.0)
 	)
 
-	# Couleur selon le type de balle
 	var ball_color = Color(0, 1, 1, 1)
 	match ball.ball_type:
 		BallDragThrow.BallType.CYAN:
@@ -112,13 +98,11 @@ func _play_destruction_effect(ball: BallDragThrow):
 		load("res://assets/particles/cross_diamond.svg"),
 	]
 
-	# Colored star explosions (3 emitters)
 	for i in range(star_textures.size()):
 		var p = _create_explosion_emitter(ball_pos, dir_x, ball_color, star_textures[i])
 		get_parent().add_child(p)
 		p.emitting = true
 
-	# White star explosions (3 emitters)
 	for i in range(star_textures.size()):
 		var p = _create_explosion_emitter(ball_pos, dir_x, Color(1, 1, 1, 1), star_textures[i])
 		get_parent().add_child(p)
@@ -158,21 +142,40 @@ func _create_explosion_emitter(pos: Vector2, dir_x: float, color: Color, tex: Te
 	mat.particle_flag_disable_z = true
 
 	particles.process_material = mat
-
-	# Auto-cleanup
 	particles.finished.connect(particles.queue_free)
 
 	return particles
 
 func _destroy_wrong_ball(ball: BallDragThrow):
-	# Mauvaise couleur = destruction immédiate sans points
-	# Effet visuel rapide de rejet
+	var ball_pos = ball.global_position
+
+	# Wrong wall sound - low-pitched buzz
+	_play_sound(wrong_sound, ball_pos, -8.0)
+
+	# Red flash X at impact point
+	var x_label = Label.new()
+	x_label.text = "X"
+	x_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	x_label.add_theme_font_size_override("font_size", 80)
+	x_label.add_theme_color_override("font_color", Color(1, 0.2, 0.2, 1))
+	x_label.position = ball_pos + Vector2(-25, -50)
+	x_label.pivot_offset = Vector2(25, 50)
+	x_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	get_parent().add_child(x_label)
+
+	var xt = get_parent().create_tween()
+	xt.tween_property(x_label, "scale", Vector2(1.5, 1.5), 0.1).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	xt.tween_property(x_label, "modulate:a", 0.0, 0.3)
+	xt.tween_callback(x_label.queue_free)
+
+	# Ball rejection: shrink + red tint + bounce back
 	if ball.has_node("Sprite2D"):
 		var sprite = ball.get_node("Sprite2D")
 		var tween = create_tween()
 		tween.set_parallel(true)
-		tween.tween_property(sprite, "modulate", Color(1, 1, 1, 0), 0.15)
-		tween.tween_property(sprite, "scale", Vector2(0.5, 0.5), 0.15)
+		tween.tween_property(sprite, "modulate", Color(1, 0.2, 0.2, 0), 0.2)
+		tween.tween_property(sprite, "scale", Vector2(0.3, 0.3), 0.2)
 
-	await get_tree().create_timer(0.15).timeout
-	ball.queue_free()
+	await get_tree().create_timer(0.2).timeout
+	if is_instance_valid(ball):
+		ball.queue_free()

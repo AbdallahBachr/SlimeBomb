@@ -4,16 +4,16 @@ class_name BallDragThrow
 enum BallType { CYAN, MAGENTA, YELLOW, BOMB }
 
 @export var ball_type: BallType = BallType.CYAN
-@export var throw_speed: float = 1800.0  # Vitesse max du jet
-@export var throw_speed_min: float = 600.0  # Vitesse min du jet
+@export var throw_speed: float = 1800.0
+@export var throw_speed_min: float = 600.0
 
 var is_grabbed: bool = false
 var is_thrown: bool = false
 
-# Throw tracking - on stocke les positions souris avec timestamps
+# Throw tracking
 var mouse_positions: Array[Vector2] = []
 var mouse_times: Array[float] = []
-const MOUSE_HISTORY_DURATION: float = 0.1  # Seulement les 100ms recents
+const MOUSE_HISTORY_DURATION: float = 0.1
 
 # Trail effect
 var trail_line: Line2D = null
@@ -30,11 +30,18 @@ var base_gravity: float = 0.15
 # Wall inversion awareness
 var walls_inverted: bool = false
 
+# Preloaded sounds
+var snd_grab: AudioStream
+var snd_throw: AudioStream
+
 signal ball_scored(points: int)
 signal ball_missed()
 signal bomb_exploded()
 
 func _ready():
+	snd_grab = load("res://assets/sounds/blue_wall.mp3")
+	snd_throw = load("res://assets/sounds/red_wall.mp3")
+
 	_setup_visuals()
 	_setup_trail()
 
@@ -46,7 +53,6 @@ func _ready():
 func _setup_visuals():
 	var sprite = $Sprite2D if has_node("Sprite2D") else null
 
-	# Remove GlowParticles - no ambient particles on balls
 	if has_node("GlowParticles"):
 		$GlowParticles.queue_free()
 
@@ -68,19 +74,16 @@ func _setup_trail():
 	trail_line = Line2D.new()
 	trail_line.width = 12.0
 
-	# Gradient: transparent -> opaque
 	var gradient = Gradient.new()
 	gradient.set_color(0, Color(1, 1, 1, 0))
 	gradient.set_color(1, Color(1, 1, 1, 0.7))
 	trail_line.gradient = gradient
 
-	# Width curve: thin -> thick
 	var curve = Curve.new()
 	curve.add_point(Vector2(0, 0.2))
 	curve.add_point(Vector2(1, 1.0))
 	trail_line.width_curve = curve
 
-	# Couleur selon le type
 	match ball_type:
 		BallType.CYAN:
 			trail_line.default_color = Color(0.0, 1.0, 1.0, 0.7)
@@ -114,12 +117,25 @@ func _input(event):
 		if event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
 			_release()
 
+func _play_sfx(stream: AudioStream, volume_db: float = 0.0, pitch: float = 1.0):
+	var player = AudioStreamPlayer.new()
+	player.stream = stream
+	player.volume_db = volume_db
+	player.pitch_scale = pitch
+	player.bus = &"SFX"
+	get_tree().root.add_child(player)
+	player.play()
+	player.finished.connect(player.queue_free)
+
 func _grab():
 	if is_thrown:
 		return
 
 	is_grabbed = true
 	freeze = true
+
+	# Grab sound - soft click
+	_play_sfx(snd_grab, -18.0, 1.5)
 
 	# Scale up smooth
 	var tween = create_tween()
@@ -144,28 +160,27 @@ func _release():
 	is_thrown = true
 	freeze = false
 
-	# Calculer la velocite a partir des positions recentes
 	var throw_vel = _calculate_throw_velocity()
 
-	# Verifier la direction (avec prise en compte de l'inversion)
+	# Throw whoosh sound - pitch based on speed
+	var speed_ratio = throw_vel.length() / (throw_speed * 2.0)
+	_play_sfx(snd_throw, -14.0, 0.8 + speed_ratio * 0.6)
+
 	_check_throw_direction(throw_vel)
 
-	# Appliquer - smooth, pas de spike
 	linear_velocity = throw_vel
-	gravity_scale = 0.0  # Pas de gravite pendant le vol
+	gravity_scale = 0.0
 
 	# Scale back
 	var tween = create_tween()
 	tween.tween_property(self, "scale", Vector2(1.0, 1.0), 0.08)
 
-	# Start trail fade timer
 	trail_fade_timer = TRAIL_FADE_DURATION
 
 func _calculate_throw_velocity() -> Vector2:
 	if mouse_positions.size() < 2:
 		return Vector2.ZERO
 
-	# Prendre le deplacement total sur la periode
 	var oldest_pos = mouse_positions[0]
 	var newest_pos = mouse_positions[mouse_positions.size() - 1]
 	var oldest_time = mouse_times[0]
@@ -178,10 +193,8 @@ func _calculate_throw_velocity() -> Vector2:
 	var direction = (newest_pos - oldest_pos)
 	var speed = direction.length() / dt
 
-	# Clamp la vitesse pour eviter les spikes
 	speed = clamp(speed, throw_speed_min, throw_speed * 2.0)
 
-	# Normaliser et appliquer la vitesse
 	if direction.length() > 0:
 		return direction.normalized() * speed
 	return Vector2.ZERO
@@ -197,7 +210,6 @@ func _check_throw_direction(velocity: Vector2):
 	var is_right = dir_x > 50
 	var is_left = dir_x < -50
 
-	# Si murs inversés, on inverse la logique
 	var cyan_goes_right = not walls_inverted
 	var magenta_goes_left = not walls_inverted
 
@@ -226,31 +238,25 @@ func _process(delta):
 	# Acceleration pattern: sin wave on gravity
 	if has_accel_pattern and not is_grabbed and not is_thrown:
 		accel_timer += delta
-		var wave = sin(accel_timer * 3.0)  # Oscillation ~2s cycle
-		gravity_scale = base_gravity * (1.0 + wave * 0.7)  # 0.3x to 1.7x
+		var wave = sin(accel_timer * 3.0)
+		gravity_scale = base_gravity * (1.0 + wave * 0.7)
 
 	if is_grabbed:
-		# Suivre la souris smooth
 		var target_pos = get_global_mouse_position()
 		global_position = global_position.lerp(target_pos, 0.4)
 
-		# Enregistrer positions pour le throw
 		mouse_positions.append(get_global_mouse_position())
 		mouse_times.append(now)
 
-		# Garder seulement les positions recentes
 		while mouse_times.size() > 0 and (now - mouse_times[0]) > MOUSE_HISTORY_DURATION:
 			mouse_positions.pop_front()
 			mouse_times.pop_front()
 
-		# Update trail
 		_update_trail()
 
 	elif is_thrown:
-		# La balle vole - continuer le trail
 		_update_trail()
 
-		# Fade out progressif du trail
 		if trail_fade_timer > 0:
 			trail_fade_timer -= delta
 			if trail_line:
@@ -262,14 +268,11 @@ func _update_trail():
 	if not trail_line or not trail_line.visible:
 		return
 
-	# Ajouter la position actuelle
 	trail_points.append(global_position)
 
-	# Limiter le nombre de points
 	while trail_points.size() > MAX_TRAIL_POINTS:
 		trail_points.pop_front()
 
-	# Mettre a jour la Line2D
 	trail_line.clear_points()
 	for point in trail_points:
 		trail_line.add_point(point)
@@ -286,6 +289,5 @@ func _explode():
 	queue_free()
 
 func _exit_tree():
-	# Nettoyer le trail quand la balle est detruite
 	if trail_line and is_instance_valid(trail_line):
 		trail_line.queue_free()

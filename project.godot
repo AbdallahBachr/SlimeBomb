@@ -27,7 +27,6 @@ window/size/viewport_height=2400
 window/size/window_width_override=405
 window/size/window_height_override=900
 window/stretch/mode="canvas_items"
-window/stretch/aspect="keep"
 window/handheld/orientation=1
 
 [gui]
