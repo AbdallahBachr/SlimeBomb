@@ -1,17 +1,16 @@
-[gd_scene format=3 uid="uid://bsqyxk3mht8vl"]
+[gd_scene format=3 uid="uid://72s7yfcl4e8s"]
 
-[ext_resource type="Script" path="res://scripts/objects/Ball.gd" id="1_ball"]
-[ext_resource type="Texture2D" uid="uid://dcakm7k3jxhoc" path="res://assets/ball_default.svg" id="2_texture"]
+[ext_resource type="Script" uid="uid://ca4ow4jpmclt8" path="res://scripts/objects/Ball.gd" id="1_ball"]
+[ext_resource type="Texture2D" uid="uid://b7omq7yys25nq" path="res://assets/ball_default.svg" id="2_texture"]
 
 [sub_resource type="CircleShape2D" id="CircleShape2D_1"]
 radius = 60.0
 
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_1"]
+particle_flag_disable_z = true
 emission_shape = 1
 emission_sphere_radius = 20.0
-particle_flag_disable_z = true
 direction = Vector3(0, -1, 0)
-spread = 45.0
 initial_velocity_min = 100.0
 initial_velocity_max = 200.0
 gravity = Vector3(0, 300, 0)
@@ -19,32 +18,28 @@ scale_min = 0.5
 scale_max = 1.5
 color = Color(1, 1, 0, 1)
 
-[node name="Ball" type="RigidBody2D"]
-gravity_scale = 1.0
-max_contacts_reported = 1
+[node name="Ball" type="RigidBody2D" unique_id=300086762]
 contact_monitor = true
+max_contacts_reported = 1
 script = ExtResource("1_ball")
 
-[node name="Sprite2D" type="Sprite2D" parent="."]
-self_modulate = Color(1, 1, 1, 1)
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=789329653]
 texture = ExtResource("2_texture")
-scale = Vector2(1.0, 1.0)
 
-[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1487369593]
 shape = SubResource("CircleShape2D_1")
 
-[node name="SuccessParticles" type="GPUParticles2D" parent="."]
+[node name="SuccessParticles" type="GPUParticles2D" parent="." unique_id=92792409]
 emitting = false
 amount = 20
-process_material = SubResource("ParticleProcessMaterial_1")
 lifetime = 0.8
 one_shot = true
 explosiveness = 1.0
+process_material = SubResource("ParticleProcessMaterial_1")
 
-[node name="ExplosionParticles" type="GPUParticles2D" parent="."]
+[node name="ExplosionParticles" type="GPUParticles2D" parent="." unique_id=1880035054]
 emitting = false
 amount = 50
-process_material = SubResource("ParticleProcessMaterial_1")
-lifetime = 1.0
 one_shot = true
 explosiveness = 1.0
+process_material = SubResource("ParticleProcessMaterial_1")

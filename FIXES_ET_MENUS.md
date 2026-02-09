@@ -80,22 +80,22 @@ Ajouté `mouse_filter = 2` (IGNORE) sur:
 
 ```
 MainMenu (démarrage)
-    ↓
+	↓
   [PLAY]
-    ↓
+	↓
 DragThrowGame
-    ↓
+	↓
   [ESC] → PauseMenu
-            ↓
-          [RESUME] → Reprendre
-            ↓
-          [MENU] → MainMenu
-    ↓
+			↓
+		  [RESUME] → Reprendre
+			↓
+		  [MENU] → MainMenu
+	↓
   Game Over → GameOverMenu
-                ↓
-              [RETRY] → DragThrowGame
-                ↓
-              [MENU] → MainMenu
+				↓
+			  [RETRY] → DragThrowGame
+				↓
+			  [MENU] → MainMenu
 ```
 
 ---

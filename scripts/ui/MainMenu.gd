@@ -6,14 +6,19 @@ extends Control
 @onready var title_label = $TitleLabel
 @onready var high_score_label = $HighScoreLabel
 @onready var subtitle_label = $SubtitleLabel
+@onready var how_to_button = $HowToButton
 
 var settings_menu: Control = null
 var music_player: AudioStreamPlayer = null
+var tutorial_overlay: Control = null
+var ui_sfx: AudioStream = preload("res://assets/sounds/UImenu.wav")
 
 func _ready():
 	play_button.pressed.connect(_on_play_pressed)
 	settings_button.pressed.connect(_on_settings_pressed)
 	quit_button.pressed.connect(_on_quit_pressed)
+	if how_to_button:
+		how_to_button.pressed.connect(_on_how_to_pressed)
 
 	_load_settings_overlay()
 	_load_high_score()
@@ -125,6 +130,7 @@ func _animate_title_pulse():
 	tween.tween_property(title_label, "scale", Vector2(1.0, 1.0), 1.5)
 
 func _on_play_pressed():
+	_play_ui()
 	# Fade out music + visuals
 	if music_player:
 		var mt = create_tween()
@@ -138,8 +144,90 @@ func _on_play_pressed():
 	get_tree().change_scene_to_file("res://scenes/minigames/DragThrowGame.tscn")
 
 func _on_settings_pressed():
+	_play_ui()
 	if settings_menu:
 		settings_menu.show_settings()
 
 func _on_quit_pressed():
+	_play_ui()
 	get_tree().quit()
+
+func _on_how_to_pressed():
+	_play_ui()
+	_show_tutorial()
+
+func _show_tutorial():
+	if tutorial_overlay and is_instance_valid(tutorial_overlay):
+		tutorial_overlay.visible = true
+		return
+	_build_tutorial_overlay()
+
+func _build_tutorial_overlay():
+	tutorial_overlay = Control.new()
+	tutorial_overlay.name = "TutorialOverlay"
+	tutorial_overlay.anchors_preset = Control.PRESET_FULL_RECT
+	tutorial_overlay.anchor_right = 1.0
+	tutorial_overlay.anchor_bottom = 1.0
+	tutorial_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(tutorial_overlay)
+
+	var overlay = ColorRect.new()
+	overlay.color = Color(0, 0, 0, 0.75)
+	overlay.anchors_preset = Control.PRESET_FULL_RECT
+	overlay.anchor_right = 1.0
+	overlay.anchor_bottom = 1.0
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	tutorial_overlay.add_child(overlay)
+
+	var panel = Panel.new()
+	panel.size = Vector2(720, 780)
+	panel.position = Vector2(180, 420)
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	var style = StyleBoxFlat.new()
+	style.bg_color = Color(0.05, 0.05, 0.1, 0.95)
+	style.set_border_width_all(2)
+	style.border_color = Color(0, 1, 1, 0.35)
+	style.set_corner_radius_all(30)
+	panel.add_theme_stylebox_override("panel", style)
+	tutorial_overlay.add_child(panel)
+
+	var title = Label.new()
+	title.text = "HOW TO PLAY"
+	title.add_theme_font_size_override("font_size", 34)
+	title.add_theme_color_override("font_color", Color(0, 1, 1, 1))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.size = Vector2(720, 80)
+	title.position = Vector2(0, 30)
+	panel.add_child(title)
+
+	var body = Label.new()
+	body.text = "1. Tap a falling ball\n2. Drag and aim\n3. Release to throw\n\nCYAN -> Right\nMAGENTA -> Left\nYELLOW -> Either\nBOMB -> Do NOT touch"
+	body.add_theme_font_size_override("font_size", 22)
+	body.add_theme_color_override("font_color", Color(0.8, 0.8, 0.9, 1))
+	body.position = Vector2(60, 140)
+	body.size = Vector2(600, 380)
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD
+	panel.add_child(body)
+
+	var close = Button.new()
+	close.text = "CLOSE"
+	close.custom_minimum_size = Vector2(220, 60)
+	close.position = Vector2(250, 640)
+	close.add_theme_font_size_override("font_size", 22)
+	close.add_theme_color_override("font_color", Color(0.9, 0.9, 1, 1))
+	panel.add_child(close)
+	close.pressed.connect(func():
+		_play_ui()
+		tutorial_overlay.visible = false
+	)
+
+func _play_ui():
+	if not ui_sfx:
+		return
+	var p = AudioStreamPlayer.new()
+	p.stream = ui_sfx
+	p.volume_db = -6.0
+	p.bus = &"SFX"
+	add_child(p)
+	p.play()
+	p.finished.connect(p.queue_free)

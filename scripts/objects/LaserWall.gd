@@ -12,7 +12,8 @@ var wall_sound: AudioStream
 var particle_sound: AudioStream
 var wrong_sound: AudioStream
 
-signal ball_destroyed(points: int)
+signal ball_destroyed(points: int, ball: BallDragThrow)
+signal wrong_wall_hit()
 
 func _ready():
 	original_type = wall_type
@@ -67,17 +68,25 @@ func _on_body_entered(body):
 			match_found = true
 
 		if match_found:
-			ball_destroyed.emit(50)
+			if ball.has_method("hit_flash"):
+				ball.hit_flash(Color(1, 1, 1, 1))
+			ball_destroyed.emit(50, ball)
 			_play_destruction_effect(ball)
 			ball.queue_free()
 		else:
+			if ball.has_method("hit_flash"):
+				ball.hit_flash(Color(1, 0.3, 0.3, 1))
+			wrong_wall_hit.emit()
 			_destroy_wrong_ball(ball)
+	elif body is PowerupDrop:
+		var p = body as PowerupDrop
+		p.apply_wall_hit()
 
 func _play_destruction_effect(ball: BallDragThrow):
 	var ball_pos = ball.global_position
 	var dir_x = -1.0 if wall_type == WallType.CYAN else 1.0
 
-	_play_sound(wall_sound, ball_pos)
+	# Correct-hit sound handled by piano notes in DragThrowGame
 
 	get_tree().create_timer(0.1).timeout.connect(func():
 		_play_sound(particle_sound, ball_pos, -5.0)
@@ -156,7 +165,7 @@ func _destroy_wrong_ball(ball: BallDragThrow):
 	var x_label = Label.new()
 	x_label.text = "X"
 	x_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	x_label.add_theme_font_size_override("font_size", 80)
+	x_label.add_theme_font_size_override("font_size", 40)
 	x_label.add_theme_color_override("font_color", Color(1, 0.2, 0.2, 1))
 	x_label.position = ball_pos + Vector2(-25, -50)
 	x_label.pivot_offset = Vector2(25, 50)

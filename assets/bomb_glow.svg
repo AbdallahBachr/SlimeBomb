@@ -1,22 +1,29 @@
-<svg width="128" height="128" xmlns="http://www.w3.org/2000/svg">
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <!-- Glow effect -->
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+    <filter id="dangerGlow">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
       <feMerge>
-        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="blur"/>
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
+    <filter id="softGlow">
+      <feGaussianBlur stdDeviation="3"/>
+    </filter>
   </defs>
-
-  <!-- Cercle principal noir/gris -->
-  <circle cx="64" cy="68" r="45" fill="#2d2d2d" filter="url(#glow)"/>
-
-  <!-- Cercle intérieur -->
-  <circle cx="64" cy="68" r="40" fill="#1a1a1a"/>
-
-  <!-- Croix de danger style minimaliste -->
-  <line x1="50" y1="54" x2="78" y2="82" stroke="#ff4757" stroke-width="4" stroke-linecap="round"/>
-  <line x1="78" y1="54" x2="50" y2="82" stroke="#ff4757" stroke-width="4" stroke-linecap="round"/>
+  <!-- Danger glow halo -->
+  <circle cx="64" cy="68" r="54" fill="none" stroke="#ff2020" stroke-width="3" opacity="0.25" filter="url(#softGlow)"/>
+  <!-- Main body - dark menacing -->
+  <circle cx="64" cy="68" r="42" fill="#1a1a1a" filter="url(#dangerGlow)"/>
+  <!-- Inner dark core -->
+  <circle cx="64" cy="68" r="36" fill="#111111"/>
+  <!-- Danger X - thick neon red -->
+  <line x1="46" y1="50" x2="82" y2="86" stroke="#ff3030" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
+  <line x1="82" y1="50" x2="46" y2="86" stroke="#ff3030" stroke-width="6" stroke-linecap="round" opacity="0.9"/>
+  <!-- Neon danger ring -->
+  <circle cx="64" cy="68" r="42" fill="none" stroke="#ff2020" stroke-width="2.5" opacity="0.7"/>
+  <!-- Fuse spark dot -->
+  <circle cx="64" cy="22" r="5" fill="#ff6600" opacity="0.9"/>
+  <circle cx="64" cy="22" r="3" fill="#ffcc00"/>
 </svg>

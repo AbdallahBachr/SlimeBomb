@@ -8,6 +8,7 @@ signal menu_pressed
 @onready var panel = $Panel
 
 var settings_menu: Control = null
+var ui_sfx: AudioStream = preload("res://assets/sounds/UImenu.wav")
 
 func _ready():
 	resume_button.pressed.connect(_on_resume)
@@ -70,15 +71,29 @@ func hide_pause():
 	get_tree().paused = false
 
 func _on_resume():
+	_play_ui()
 	resume_pressed.emit()
 	hide_pause()
 
 func _on_settings():
+	_play_ui()
 	if settings_menu:
 		settings_menu.show_settings()
 
 func _on_menu():
+	_play_ui()
 	menu_pressed.emit()
 	Engine.time_scale = 1.0
 	get_tree().paused = false
 	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")
+
+func _play_ui():
+	if not ui_sfx:
+		return
+	var p = AudioStreamPlayer.new()
+	p.stream = ui_sfx
+	p.volume_db = -6.0
+	p.bus = &"SFX"
+	add_child(p)
+	p.play()
+	p.finished.connect(p.queue_free)

@@ -1,55 +1,82 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://scripts/ui/MainMenu.gd" id="1"]
+[ext_resource type="Shader" path="res://assets/shaders/background.gdshader" id="2"]
+[ext_resource type="Shader" path="res://assets/shaders/scanlines.gdshader" id="3"]
 
 [sub_resource type="StyleBoxFlat" id="play_normal"]
 bg_color = Color(0, 0.9, 0.9, 1)
-corner_radius_top_left = 30
-corner_radius_top_right = 30
-corner_radius_bottom_right = 30
-corner_radius_bottom_left = 30
-shadow_color = Color(0, 0.6, 0.6, 0.4)
-shadow_size = 8
+corner_radius_top_left = 35
+corner_radius_top_right = 35
+corner_radius_bottom_right = 35
+corner_radius_bottom_left = 35
+shadow_color = Color(0, 0.5, 0.5, 0.5)
+shadow_size = 10
+shadow_offset = Vector2(0, 4)
 
 [sub_resource type="StyleBoxFlat" id="play_hover"]
 bg_color = Color(0, 1, 1, 1)
-corner_radius_top_left = 30
-corner_radius_top_right = 30
-corner_radius_bottom_right = 30
-corner_radius_bottom_left = 30
-shadow_color = Color(0, 0.8, 0.8, 0.6)
-shadow_size = 12
+corner_radius_top_left = 35
+corner_radius_top_right = 35
+corner_radius_bottom_right = 35
+corner_radius_bottom_left = 35
+shadow_color = Color(0, 0.8, 0.8, 0.7)
+shadow_size = 16
 
 [sub_resource type="StyleBoxFlat" id="play_pressed"]
 bg_color = Color(0, 0.7, 0.7, 1)
+corner_radius_top_left = 35
+corner_radius_top_right = 35
+corner_radius_bottom_right = 35
+corner_radius_bottom_left = 35
+
+[sub_resource type="StyleBoxFlat" id="secondary_normal"]
+bg_color = Color(0.08, 0.08, 0.14, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.25, 0.25, 0.35, 1)
 corner_radius_top_left = 30
 corner_radius_top_right = 30
 corner_radius_bottom_right = 30
 corner_radius_bottom_left = 30
 
-[sub_resource type="StyleBoxFlat" id="secondary_normal"]
-bg_color = Color(0.12, 0.12, 0.18, 1)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.3, 0.3, 0.4, 1)
-corner_radius_top_left = 25
-corner_radius_top_right = 25
-corner_radius_bottom_right = 25
-corner_radius_bottom_left = 25
-
 [sub_resource type="StyleBoxFlat" id="secondary_hover"]
-bg_color = Color(0.18, 0.18, 0.25, 1)
+bg_color = Color(0.12, 0.12, 0.2, 1)
 border_width_left = 2
 border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
-border_color = Color(0, 0.9, 0.9, 0.6)
-corner_radius_top_left = 25
-corner_radius_top_right = 25
-corner_radius_bottom_right = 25
-corner_radius_bottom_left = 25
+border_color = Color(0, 0.8, 0.8, 0.6)
+corner_radius_top_left = 30
+corner_radius_top_right = 30
+corner_radius_bottom_right = 30
+corner_radius_bottom_left = 30
+
+[sub_resource type="StyleBoxFlat" id="secondary_pressed"]
+bg_color = Color(0.06, 0.06, 0.1, 1)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0, 0.6, 0.6, 0.5)
+corner_radius_top_left = 30
+corner_radius_top_right = 30
+corner_radius_bottom_right = 30
+corner_radius_bottom_left = 30
+
+[sub_resource type="ShaderMaterial" id="bg_mat"]
+shader = ExtResource("2")
+shader_parameter/color_top = Color(0.02, 0.04, 0.12, 1)
+shader_parameter/color_bottom = Color(0.01, 0.01, 0.03, 1)
+shader_parameter/accent_color = Color(1, 0, 1, 1)
+shader_parameter/accent_strength = 0.14
+shader_parameter/noise_amount = 0.03
+shader_parameter/vignette_strength = 0.4
+
+[sub_resource type="ShaderMaterial" id="scan_mat"]
+shader = ExtResource("3")
 
 [node name="MainMenu" type="Control"]
 layout_mode = 3
@@ -67,24 +94,36 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-color = Color(0.02, 0.02, 0.04, 1)
+material = SubResource("bg_mat")
+
+[node name="Scanlines" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+material = SubResource("scan_mat")
 
 [node name="TitleLabel" type="Label" parent="."]
 layout_mode = 1
 anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
-offset_left = -400.0
-offset_top = 280.0
-offset_right = 400.0
-offset_bottom = 430.0
+offset_left = -450.0
+offset_top = 220.0
+offset_right = 450.0
+offset_bottom = 400.0
 grow_horizontal = 2
-theme_override_font_sizes/font_size = 96
+theme_override_font_sizes/font_size = 48
 theme_override_colors/font_color = Color(0, 1, 1, 1)
+theme_override_colors/font_shadow_color = Color(0, 0.4, 0.4, 0.4)
+theme_override_constants/shadow_offset_x = 0
+theme_override_constants/shadow_offset_y = 5
 text = "SLIME BOMB"
 horizontal_alignment = 1
 vertical_alignment = 1
-pivot_offset = Vector2(400, 75)
+pivot_offset = Vector2(450, 90)
 
 [node name="SubtitleLabel" type="Label" parent="."]
 layout_mode = 1
@@ -92,12 +131,12 @@ anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -300.0
-offset_top = 440.0
+offset_top = 420.0
 offset_right = 300.0
-offset_bottom = 500.0
+offset_bottom = 470.0
 grow_horizontal = 2
-theme_override_font_sizes/font_size = 28
-theme_override_colors/font_color = Color(0.5, 0.5, 0.6, 1)
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(0.45, 0.45, 0.55, 0.8)
 text = "DRAG  /  THROW  /  SCORE"
 horizontal_alignment = 1
 
@@ -107,12 +146,12 @@ anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -250.0
-offset_top = 550.0
+offset_top = 520.0
 offset_right = 250.0
-offset_bottom = 610.0
+offset_bottom = 575.0
 grow_horizontal = 2
-theme_override_font_sizes/font_size = 36
-theme_override_colors/font_color = Color(1, 0, 1, 0.8)
+theme_override_font_sizes/font_size = 26
+theme_override_colors/font_color = Color(1, 0, 1, 0.7)
 text = "BEST  0"
 horizontal_alignment = 1
 
@@ -123,42 +162,65 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -220.0
-offset_top = 150.0
-offset_right = 220.0
+offset_left = -230.0
+offset_top = 130.0
+offset_right = 230.0
 offset_bottom = 500.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 25
+theme_override_constants/separation = 20
 
 [node name="PlayButton" type="Button" parent="VBoxContainer"]
-custom_minimum_size = Vector2(440, 90)
+custom_minimum_size = Vector2(460, 100)
 layout_mode = 2
-theme_override_font_sizes/font_size = 38
-theme_override_colors/font_color = Color(0.02, 0.02, 0.04, 1)
-theme_override_colors/font_hover_color = Color(0.02, 0.02, 0.04, 1)
-theme_override_colors/font_pressed_color = Color(0.02, 0.02, 0.04, 1)
+theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.01, 0.01, 0.03, 1)
+theme_override_colors/font_hover_color = Color(0.01, 0.01, 0.03, 1)
+theme_override_colors/font_pressed_color = Color(0.01, 0.01, 0.03, 1)
 theme_override_styles/normal = SubResource("play_normal")
 theme_override_styles/hover = SubResource("play_hover")
 theme_override_styles/pressed = SubResource("play_pressed")
 text = "PLAY"
 
 [node name="SettingsButton" type="Button" parent="VBoxContainer"]
-custom_minimum_size = Vector2(440, 75)
+custom_minimum_size = Vector2(460, 75)
 layout_mode = 2
-theme_override_font_sizes/font_size = 30
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(0.6, 0.6, 0.7, 1)
+theme_override_colors/font_hover_color = Color(0, 1, 1, 1)
+theme_override_styles/normal = SubResource("secondary_normal")
+theme_override_styles/hover = SubResource("secondary_hover")
+theme_override_styles/pressed = SubResource("secondary_pressed")
+text = "SETTINGS"
+
+[node name="QuitButton" type="Button" parent="VBoxContainer"]
+custom_minimum_size = Vector2(460, 75)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(0.6, 0.6, 0.7, 1)
+theme_override_colors/font_hover_color = Color(1, 0, 1, 1)
+theme_override_styles/normal = SubResource("secondary_normal")
+theme_override_styles/hover = SubResource("secondary_hover")
+theme_override_styles/pressed = SubResource("secondary_pressed")
+text = "QUIT"
+
+[node name="HowToButton" type="Button" parent="."]
+layout_mode = 1
+anchors_preset = 12
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -260.0
+offset_top = -110.0
+offset_right = -40.0
+offset_bottom = -40.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_font_sizes/font_size = 20
 theme_override_colors/font_color = Color(0.7, 0.7, 0.8, 1)
 theme_override_colors/font_hover_color = Color(0, 1, 1, 1)
 theme_override_styles/normal = SubResource("secondary_normal")
 theme_override_styles/hover = SubResource("secondary_hover")
-text = "SETTINGS"
-
-[node name="QuitButton" type="Button" parent="VBoxContainer"]
-custom_minimum_size = Vector2(440, 75)
-layout_mode = 2
-theme_override_font_sizes/font_size = 30
-theme_override_colors/font_color = Color(0.7, 0.7, 0.8, 1)
-theme_override_colors/font_hover_color = Color(1, 0, 1, 1)
-theme_override_styles/normal = SubResource("secondary_normal")
-theme_override_styles/hover = SubResource("secondary_hover")
-text = "QUIT"
+theme_override_styles/pressed = SubResource("secondary_pressed")
+text = "HOW TO PLAY"

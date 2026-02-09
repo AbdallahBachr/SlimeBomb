@@ -1,142 +1,19 @@
-╔═══════════════════════════════════════════════════════════════╗
-║              COMMENT JOUER - SLIMEBOMB                        ║
-╚═══════════════════════════════════════════════════════════════╝
+COMMENT JOUER - SLIMEBOMB (DRAG & THROW)
 
-🎮 COMMENT SWIPER CORRECTEMENT
+IMPORTANT: Le jeu utilise le DRAG & THROW, pas le swipe rapide.
 
-⚠️ IMPORTANT: Le jeu utilise des SWIPES (glisser rapide),
-               PAS du drag lent !
+Technique (PC ou mobile)
+1. Cliquer sur une balle qui tombe
+2. Maintenir et drag dans une direction
+3. Relacher pour jeter
 
-═══════════════════════════════════════════════════════════════
+Regles
+- CYAN -> Jeter a DROITE
+- MAGENTA -> Jeter a GAUCHE
+- YELLOW -> Jeter gauche ou droite
+- BOMBE -> Ne pas toucher
 
-📱 TECHNIQUE DE SWIPE (avec la souris pour test PC)
-
-1. CLIQUER sur une balle (bouton gauche enfoncé)
-2. GLISSER RAPIDEMENT dans une direction (50+ pixels minimum)
-3. RELÂCHER le bouton
-
-   ❌ NE PAS: Cliquer et bouger lentement
-   ✅ À FAIRE: Cliquer → Glisser VITE → Relâcher
-
-═══════════════════════════════════════════════════════════════
-
-🎯 RÈGLES DU JEU
-
-🟢 BALLE VERTE
-   → Swiper vers la DROITE →→→
-   → La balle va voler vers la droite et le haut
-
-🔴 BALLE ROUGE
-   → Swiper vers la GAUCHE ←←←
-   → La balle va voler vers la gauche et le haut
-
-💣 BOMBE NOIRE
-   → NE PAS TOUCHER !
-   → Si touchée = GAME OVER instantané
-
-═══════════════════════════════════════════════════════════════
-
-🔍 DEBUG - Vérifier que ça fonctionne
-
-Quand vous jouez, ouvrez la CONSOLE (Output panel en bas):
-
-✅ Si vous voyez ces messages, tout fonctionne:
-   👆 SWIPE DETECTED! Distance: 156.4 Direction: (0.8, -0.2)
-   🔍 Checking 8 positions for ball hit...
-   ✅ BALL FOUND at position: (450, 320)
-   🎯 Ball touched! Type: 0 Direction: (0.8, -0.2)
-
-❌ Si vous voyez:
-   "❌ Swipe trop court ou trop lent. Distance: 23 (min: 50)"
-   → Swipez PLUS VITE et PLUS LOIN
-
-   "❌ No ball found in trail"
-   → Vous avez swipé à côté de la balle
-   → Essayez de swiper DIRECTEMENT sur la balle
-
-═══════════════════════════════════════════════════════════════
-
-💡 ASTUCES
-
-1. Les balles tombent LENTEMENT au début
-   → Après 30 secondes, elles tombent de plus en plus vite
-
-2. Les SWIPES doivent être RAPIDES
-   → Minimum 50 pixels de distance
-   → Maximum 0.5 secondes
-
-3. La direction du swipe compte !
-   → Balle verte + swipe vers la droite = ✅ CORRECT
-   → Balle verte + swipe vers la gauche = ❌ ERREUR (perte de vie)
-
-4. Le COMBO augmente vos points
-   → Chaque bon swipe = combo +1
-   → Mauvais swipe = combo reset à 0
-   → Combo x5 = 50% de points en plus !
-
-═══════════════════════════════════════════════════════════════
-
-🐛 PROBLÈMES FRÉQUENTS
-
-❓ "Les balles ne bougent pas quand je swipe"
-   → Vérifiez la console pour les messages de debug
-   → Swipez PLUS RAPIDEMENT (comme un vrai swipe tactile)
-   → Swipez DIRECTEMENT SUR la balle
-
-❓ "Je ne vois que des balles vertes"
-   → Attendez un peu, les balles rouges et bombes apparaissent
-   → Au début il y a 15% de bombes, 42.5% vertes, 42.5% rouges
-
-❓ "Les balles tombent trop vite"
-   → Au début elles sont LENTES (gravity_scale = 0.3)
-   → Après 30s, elles accélèrent progressivement
-   → C'est normal, c'est la difficulté progressive !
-
-═══════════════════════════════════════════════════════════════
-
-📊 SCORING
-
-Points par balle swipée correctement:
-  • Base: 10 points
-  • Bonus hauteur: +0 à +20 points (plus haut = plus de points)
-  • Multiplier combo: x(1 + combo * 0.1)
-
-Exemple:
-  - Swipe correct à mi-hauteur (15 points) avec combo x5
-  - Total: 15 × 1.5 = 22.5 points
-
-═══════════════════════════════════════════════════════════════
-
-🎯 OBJECTIFS
-
-Débutant:    Atteindre 500 points
-Intermédiaire: Atteindre 2000 points
-Expert:      Atteindre 5000 points
-Master:      Faire un combo x20
-
-═══════════════════════════════════════════════════════════════
-
-✅ CHECKLIST DE TEST
-
-Après avoir configuré GlobalSettings en Autoload:
-
-□ Lancer le jeu (F5)
-□ Voir des balles tomber lentement
-□ Swiper UNE balle verte vers la DROITE rapidement
-□ Voir la balle voler vers la droite/haut
-□ Vérifier le score augmente
-□ Swiper UNE balle rouge vers la GAUCHE
-□ Toucher une bombe noire → Game Over
-□ Cliquer RETRY pour recommencer
-
-═══════════════════════════════════════════════════════════════
-
-🚀 BON JEU !
-
-Si tout fonctionne, vous pouvez maintenant:
-1. Désactiver les prints de debug (optionnel)
-2. Ajouter des vrais sprites (voir NEXT_STEPS.md)
-3. Ajouter des sons (CRITIQUE pour l'addiction!)
-4. Créer un menu principal
-
-Voir NEXT_STEPS.md pour le guide complet de monétisation ! 💰
+Conseils
+- Au debut, les balles sont lentes, puis accelerent
+- Les combos augmentent le score
+- Un throw rapide et correct donne un bonus Perfect

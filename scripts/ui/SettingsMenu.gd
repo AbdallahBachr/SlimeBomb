@@ -12,6 +12,7 @@ extends Control
 var music_volume: float = 0.7
 var sfx_volume: float = 1.0
 var screen_shake: bool = true
+var ui_sfx: AudioStream = preload("res://assets/sounds/UImenu.wav")
 
 func _ready():
 	visible = false
@@ -25,7 +26,7 @@ func _ready():
 	music_slider.value_changed.connect(_on_music_changed)
 	sfx_slider.value_changed.connect(_on_sfx_changed)
 	shake_toggle.toggled.connect(_on_shake_toggled)
-	close_button.pressed.connect(hide_settings)
+	close_button.pressed.connect(_on_close_button_pressed)
 
 func show_settings():
 	visible = true
@@ -97,3 +98,18 @@ func _save_settings():
 		file.store_float(sfx_volume)
 		file.store_8(1 if screen_shake else 0)
 		file.close()
+
+func _play_ui():
+	if not ui_sfx:
+		return
+	var p = AudioStreamPlayer.new()
+	p.stream = ui_sfx
+	p.volume_db = -6.0
+	p.bus = &"SFX"
+	add_child(p)
+	p.play()
+	p.finished.connect(p.queue_free)
+
+func _on_close_button_pressed():
+	_play_ui()
+	hide_settings()

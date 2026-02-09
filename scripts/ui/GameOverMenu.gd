@@ -14,6 +14,7 @@ var max_combo: int = 0
 var time_survived: String = "0:00"
 var accuracy_pct: float = 0.0
 var settings_menu: Control = null
+var ui_sfx: AudioStream = preload("res://assets/sounds/UImenu.wav")
 
 func _ready():
 	retry_button.pressed.connect(_on_retry)
@@ -27,7 +28,7 @@ func _add_settings_button():
 	var settings_button = Button.new()
 	settings_button.text = "SETTINGS"
 	settings_button.custom_minimum_size = Vector2(0, 55)
-	settings_button.add_theme_font_size_override("font_size", 24)
+	settings_button.add_theme_font_size_override("font_size", 18)
 	settings_button.add_theme_color_override("font_color", Color(0.6, 0.6, 0.7, 1))
 	settings_button.add_theme_color_override("font_hover_color", Color(0, 1, 1, 1))
 
@@ -48,6 +49,7 @@ func _load_settings_overlay():
 	add_child(settings_menu)
 
 func _on_settings():
+	_play_ui()
 	if settings_menu:
 		settings_menu.show_settings()
 
@@ -114,7 +116,7 @@ func _animate_entrance(is_new_best: bool):
 	var time_label = Label.new()
 	time_label.text = time_survived
 	time_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	time_label.add_theme_font_size_override("font_size", 26)
+	time_label.add_theme_font_size_override("font_size", 18)
 	time_label.add_theme_color_override("font_color", Color(0, 1, 1, 0.8))
 	time_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stats_container.add_child(time_label)
@@ -122,7 +124,7 @@ func _animate_entrance(is_new_best: bool):
 	var accuracy_label = Label.new()
 	accuracy_label.text = "%d%%" % [int(accuracy_pct)]
 	accuracy_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	accuracy_label.add_theme_font_size_override("font_size", 26)
+	accuracy_label.add_theme_font_size_override("font_size", 18)
 	if accuracy_pct >= 80:
 		accuracy_label.add_theme_color_override("font_color", Color(1, 1, 0, 0.8))
 	elif accuracy_pct >= 50:
@@ -151,7 +153,20 @@ func _save_high_score():
 		file.close()
 
 func _on_retry():
+	_play_ui()
 	get_tree().change_scene_to_file("res://scenes/minigames/DragThrowGame.tscn")
 
 func _on_menu():
+	_play_ui()
 	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")
+
+func _play_ui():
+	if not ui_sfx:
+		return
+	var p = AudioStreamPlayer.new()
+	p.stream = ui_sfx
+	p.volume_db = -6.0
+	p.bus = &"SFX"
+	add_child(p)
+	p.play()
+	p.finished.connect(p.queue_free)

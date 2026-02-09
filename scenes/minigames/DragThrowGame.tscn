@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://scripts/minigames/DragThrowGame.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/objects/BallDragThrow.tscn" id="2"]
@@ -7,10 +7,26 @@
 [ext_resource type="PackedScene" path="res://scenes/objects/LaserWall.tscn" id="5"]
 [ext_resource type="Script" path="res://scripts/utils/CameraShake.gd" id="6"]
 [ext_resource type="PackedScene" path="res://scenes/objects/KillZone.tscn" id="7"]
+[ext_resource type="Shader" path="res://assets/shaders/background.gdshader" id="8"]
+[ext_resource type="Shader" path="res://assets/shaders/scanlines.gdshader" id="9"]
+[ext_resource type="PackedScene" path="res://scenes/objects/PowerupDrop.tscn" id="10"]
+
+[sub_resource type="ShaderMaterial" id="bg_mat"]
+shader = ExtResource("8")
+shader_parameter/color_top = Color(0.02, 0.04, 0.12, 1)
+shader_parameter/color_bottom = Color(0.01, 0.01, 0.02, 1)
+shader_parameter/accent_color = Color(0, 1, 1, 1)
+shader_parameter/accent_strength = 0.15
+shader_parameter/noise_amount = 0.035
+shader_parameter/vignette_strength = 0.38
+
+[sub_resource type="ShaderMaterial" id="scan_mat"]
+shader = ExtResource("9")
 
 [node name="DragThrowGame" type="Node2D"]
 script = ExtResource("1")
 ball_scene = ExtResource("2")
+powerup_scene = ExtResource("10")
 
 [node name="Camera2D" type="Camera2D" parent="."]
 position = Vector2(540, 1200)
@@ -21,9 +37,18 @@ offset_left = -100.0
 offset_top = -200.0
 offset_right = 1200.0
 offset_bottom = 2600.0
-color = Color(0, 0, 0, 1)
 z_index = -100
 mouse_filter = 2
+material = SubResource("bg_mat")
+
+[node name="Scanlines" type="ColorRect" parent="."]
+offset_left = -100.0
+offset_top = -200.0
+offset_right = 1200.0
+offset_bottom = 2600.0
+z_index = -95
+mouse_filter = 2
+material = SubResource("scan_mat")
 
 [node name="LaserWallLeft" parent="." instance=ExtResource("5")]
 position = Vector2(25, 1200)
@@ -32,6 +57,24 @@ wall_type = 1
 [node name="LaserWallRight" parent="." instance=ExtResource("5")]
 position = Vector2(1055, 1200)
 wall_type = 0
+
+[node name="WarningLeft" type="ColorRect" parent="."]
+offset_left = -10.0
+offset_top = -200.0
+offset_right = 10.0
+offset_bottom = 2600.0
+color = Color(1, 0, 1, 0.0)
+z_index = -20
+mouse_filter = 2
+
+[node name="WarningRight" type="ColorRect" parent="."]
+offset_left = 1070.0
+offset_top = -200.0
+offset_right = 1090.0
+offset_bottom = 2600.0
+color = Color(0, 1, 1, 0.0)
+z_index = -20
+mouse_filter = 2
 
 [node name="KillZone" parent="." instance=ExtResource("7")]
 position = Vector2(540, 2450)
@@ -43,49 +86,59 @@ autostart = true
 [node name="CanvasLayer" type="CanvasLayer" parent="."]
 
 [node name="ScoreLabel" type="Label" parent="CanvasLayer"]
-offset_left = 440.0
-offset_top = 100.0
-offset_right = 640.0
-offset_bottom = 180.0
+offset_left = 400.0
+offset_top = 80.0
+offset_right = 680.0
+offset_bottom = 150.0
 mouse_filter = 2
-theme_override_font_sizes/font_size = 80
+theme_override_font_sizes/font_size = 52
 theme_override_colors/font_color = Color(0.9, 0.9, 1, 0.9)
 text = "0"
 horizontal_alignment = 1
-pivot_offset = Vector2(100, 40)
-
-[node name="LivesLabel" type="Label" parent="CanvasLayer"]
-offset_left = 40.0
-offset_top = 80.0
-offset_right = 200.0
-offset_bottom = 140.0
-mouse_filter = 2
-theme_override_font_sizes/font_size = 36
-theme_override_colors/font_color = Color(1, 0, 1, 0.6)
-text = "III"
-horizontal_alignment = 0
+pivot_offset = Vector2(140, 35)
 
 [node name="ComboLabel" type="Label" parent="CanvasLayer"]
 offset_left = 290.0
 offset_top = 250.0
 offset_right = 790.0
-offset_bottom = 380.0
+offset_bottom = 350.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0, 1, 1, 1)
-theme_override_font_sizes/font_size = 100
+theme_override_font_sizes/font_size = 56
 text = "x0"
 horizontal_alignment = 1
 vertical_alignment = 1
-pivot_offset = Vector2(250, 65)
+pivot_offset = Vector2(250, 50)
 visible = false
 
+[node name="StreakBar" type="ProgressBar" parent="CanvasLayer"]
+offset_left = 140.0
+offset_top = 210.0
+offset_right = 940.0
+offset_bottom = 240.0
+min_value = 0.0
+max_value = 100.0
+value = 0.0
+mouse_filter = 2
+
+[node name="StreakLabel" type="Label" parent="CanvasLayer"]
+offset_left = 140.0
+offset_top = 175.0
+offset_right = 940.0
+offset_bottom = 210.0
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(0.7, 0.8, 1, 0.85)
+text = "STREAK"
+horizontal_alignment = 1
+mouse_filter = 2
+
 [node name="PauseButton" type="Button" parent="CanvasLayer"]
-offset_left = 920.0
-offset_top = 60.0
+offset_left = 930.0
+offset_top = 65.0
 offset_right = 1040.0
-offset_bottom = 140.0
+offset_bottom = 130.0
 mouse_filter = 0
-theme_override_font_sizes/font_size = 40
+theme_override_font_sizes/font_size = 28
 theme_override_colors/font_color = Color(0.5, 0.5, 0.6, 0.7)
 text = "II"
 flat = true
