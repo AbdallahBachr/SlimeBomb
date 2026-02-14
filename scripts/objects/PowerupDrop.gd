@@ -19,12 +19,14 @@ var last_input_is_touch: bool = false
 var mouse_positions: Array[Vector2] = []
 var mouse_times: Array[float] = []
 const MOUSE_HISTORY_DURATION: float = 0.1
+var pre_grab_gravity: float = 0.0
 
 signal powerup_activated(powerup_type: int)
 
 func _ready():
 	collision_layer = 1
 	collision_mask = 1
+	continuous_cd = RigidBody2D.CCD_MODE_CAST_SHAPE
 	_setup_visual()
 	input_event.connect(_on_input_event)
 	rotation = randf_range(0, TAU)
@@ -45,7 +47,7 @@ func _setup_visual():
 			sprite.scale = base_scale
 			sprite.self_modulate = Color(1, 1, 1, 1)
 		PowerupType.SUPER:
-			sprite.texture = load("res://assets/Bonus.svg")
+			sprite.texture = load("res://assets/bonus.svg")
 			sprite.scale = base_scale
 			sprite.self_modulate = Color(1, 1, 1, 1)
 
@@ -90,8 +92,10 @@ func _grab():
 	freeze = true
 	pre_layer = collision_layer
 	pre_mask = collision_mask
+	pre_grab_gravity = gravity_scale
 	collision_layer = 0
 	collision_mask = 0
+	gravity_scale = 0.0
 	linear_velocity = Vector2.ZERO
 	angular_velocity = 0.0
 	var pointer = _get_pointer_world_pos()
@@ -104,23 +108,26 @@ func _release():
 		return
 	is_grabbed = false
 	is_thrown = true
-	freeze = false
-	collision_layer = pre_layer
-	collision_mask = pre_mask
 	var vel = _calculate_throw_velocity()
 	if vel.length() < throw_speed_min * 0.6:
-		is_thrown = false
+		_cancel_release()
 		return
+	freeze = false
+	sleeping = false
+	collision_layer = pre_layer
+	collision_mask = pre_mask
 	linear_velocity = vel
 	gravity_scale = 0.0
 
+func _cancel_release():
+	is_thrown = false
+	freeze = false
+	collision_layer = pre_layer
+	collision_mask = pre_mask
+	gravity_scale = pre_grab_gravity
+	linear_velocity = Vector2.ZERO
+
 func _calculate_throw_velocity() -> Vector2:
-	var now = Time.get_ticks_msec() / 1000.0
-	mouse_positions.append(_get_pointer_world_pos())
-	mouse_times.append(now)
-	while mouse_times.size() > 0 and (now - mouse_times[0]) > MOUSE_HISTORY_DURATION:
-		mouse_positions.pop_front()
-		mouse_times.pop_front()
 	if mouse_positions.size() < 2:
 		return Vector2.ZERO
 	var oldest_pos = mouse_positions[0]
@@ -140,6 +147,12 @@ func _process(delta):
 	if is_grabbed:
 		var pointer = _get_pointer_world_pos()
 		global_position = global_position.lerp(pointer + grab_offset, 0.4)
+		var now = Time.get_ticks_msec() / 1000.0
+		mouse_positions.append(global_position)
+		mouse_times.append(now)
+		while mouse_times.size() > 0 and (now - mouse_times[0]) > MOUSE_HISTORY_DURATION:
+			mouse_positions.pop_front()
+			mouse_times.pop_front()
 
 func _screen_to_world(pos: Vector2) -> Vector2:
 	return get_viewport().get_canvas_transform().affine_inverse() * pos

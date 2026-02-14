@@ -30,26 +30,28 @@ var unlocked_skins: Array = ["default"]
 var current_skin: String = "default"
 
 # Power-ups possédés
-var powerups: Dictionary = {
+const DEFAULT_POWERUPS: Dictionary = {
 	"slow_motion": 0,
 	"shield": 0,
 	"double_points": 0,
 	"magnet": 0,
 	"bomb_immunity": 0
 }
+var powerups: Dictionary = DEFAULT_POWERUPS.duplicate(true)
 
 # Missions quotidiennes
 var daily_missions_completed: Array = []
 var last_daily_reset: String = ""
 
 # Statistiques
-var stats: Dictionary = {
+const DEFAULT_STATS: Dictionary = {
 	"total_swipes": 0,
 	"correct_swipes": 0,
 	"bombs_avoided": 0,
 	"max_combo": 0,
 	"total_playtime": 0.0
 }
+var stats: Dictionary = DEFAULT_STATS.duplicate(true)
 
 const SAVE_PATH = "user://savegame.save"
 
@@ -120,11 +122,21 @@ func load_game():
 			total_games_played = save_data.get("total_games_played", 0)
 			total_score = save_data.get("total_score", 0)
 			unlocked_skins = save_data.get("unlocked_skins", ["default"])
+			if unlocked_skins.is_empty():
+				unlocked_skins = ["default"]
+			elif not unlocked_skins.has("default"):
+				unlocked_skins.append("default")
 			current_skin = save_data.get("current_skin", "default")
-			powerups = save_data.get("powerups", {})
+			powerups = DEFAULT_POWERUPS.duplicate(true)
+			var saved_powerups = save_data.get("powerups", {})
+			if saved_powerups is Dictionary:
+				powerups.merge(saved_powerups, true)
 			daily_missions_completed = save_data.get("daily_missions_completed", [])
 			last_daily_reset = save_data.get("last_daily_reset", "")
-			stats = save_data.get("stats", {})
+			stats = DEFAULT_STATS.duplicate(true)
+			var saved_stats = save_data.get("stats", {})
+			if saved_stats is Dictionary:
+				stats.merge(saved_stats, true)
 
 			print("Game loaded successfully")
 		else:
@@ -213,8 +225,10 @@ func increment_stat(stat_name: String, amount: float = 1.0):
 	save_game()
 
 func get_accuracy() -> float:
-	if stats.total_swipes > 0:
-		return (float(stats.correct_swipes) / float(stats.total_swipes)) * 100.0
+	var total_swipes = float(stats.get("total_swipes", 0.0))
+	if total_swipes > 0.0:
+		var correct_swipes = float(stats.get("correct_swipes", 0.0))
+		return (correct_swipes / total_swipes) * 100.0
 	return 0.0
 
 # Audio

@@ -50,11 +50,26 @@ var first_streak_rewarded: bool = false
 const WARMUP_TIME: float = 20.0
 const INVERSION_START_TIME: float = 25.0
 var guardian_available: bool = true
+var guardian_used_once: bool = false
 var next_burst_time: float = 0.0
 var tutorial_shown: bool = false
 var quick_tip: Label = null
 var recent_combo_flash: bool = false
 var wrong_wall_streak: int = 0
+
+# Adaptive flow director (keeps tension high without unfair spikes)
+var adaptive_flow_score: float = 0.5
+var adaptive_eval_timer: float = 0.0
+const ADAPTIVE_EVAL_INTERVAL: float = 3.0
+var adaptive_spawn_offset: float = 0.0
+const ADAPTIVE_SPAWN_MIN: float = -0.22
+const ADAPTIVE_SPAWN_MAX: float = 0.28
+var assist_window_timer: float = 0.0
+const ASSIST_WINDOW_DURATION: float = 6.0
+var bomb_pause_timer: float = 0.0
+const BOMB_PAUSE_ON_MISS: float = 5.0
+var recent_hit_window: int = 0
+var recent_miss_window: int = 0
 
 # UI
 var warning_label: Label = null
@@ -62,13 +77,18 @@ var timer_label: Label = null
 var music_player: AudioStreamPlayer = null
 var life_dots: Array[TextureRect] = []
 var life_dot_texture: Texture2D = null
+var guardian_label: Label = null
+var lane_hint_left: Label = null
+var lane_hint_right: Label = null
 
-# Slow-mo (6 seconds, not permanent)
+# Slow-mo (short clutch window, not permanent)
 var slow_mo_active: bool = false
 var slow_mo_timer: float = 0.0
 const SLOW_MO_DURATION: float = 2.5
 var slow_mo_vignette: ColorRect = null
 var slow_mo_flash_started: bool = false
+var slow_mo_vignette_tween: Tween = null
+var slow_mo_life_dot_tween: Tween = null
 
 # Preloaded sounds
 var snd_miss: AudioStream
@@ -107,24 +127,59 @@ const DOUBLE_POINTS_DURATION: float = 6.0
 var overdrive_active: bool = false
 var overdrive_timer: float = 0.0
 const OVERDRIVE_DURATION: float = 6.0
+var shield_pending: bool = false
+var shield_pending_timer: float = 0.0
+const SHIELD_PENDING_DURATION: float = 6.0
+const SHIELD_ACTIVE_DURATION: float = 3.0
+const SHIELD_TRIGGER_TIME: float = 0.7
 
 # First run + audio ducking
 var first_run_active: bool = false
 var music_base_db: float = -8.0
 var music_duck_tween: Tween = null
-const DEBUG_SPAWN_SUPER: bool = true
+const DEBUG_SPAWN_SUPER: bool = false
 var super_active: bool = false
 var super_timer: float = 0.0
 var combo_frozen: bool = false
-var super_spawn_multiplier: float = 0.5
+var super_spawn_multiplier: float = 0.2
+const SUPER_DURATION: float = 6.0
+const SUPER_COOLDOWN: float = 1.5
+const SUPER_GRAVITY_MULT: float = 2.2
+var super_cooldown_active: bool = false
 var bg_saved: Dictionary = {}
 var bonus_pitch: float = 1.1
+var super_vignette: ColorRect = null
+var super_pulse_tween: Tween = null
+const SUPER_BOUNDS_MARGIN: float = 70.0
+var super_fx_phase: float = 0.0
+var super_spark_timer: float = 0.0
+const SUPER_SPARK_INTERVAL: float = 0.55
+
+# Adaptive FX profile (mobile + user particle quality)
+var fx_quality: int = 2
+var fx_is_mobile: bool = false
+var fx_particle_scale: float = 1.0
+var fx_flash_scale: float = 1.0
+var fx_super_pulse_scale: float = 1.0
+var fx_scanline_scale: float = 1.0
+var fx_super_spark_interval_scale: float = 1.0
+var fx_super_spark_amount_scale: float = 1.0
+
+# Cached textures for frequently spawned particles
+var tex_star4: Texture2D = null
+var tex_star6: Texture2D = null
+var tex_cross: Texture2D = null
 
 func _ready():
 	spawn_timer.wait_time = spawn_rate
 	spawn_timer.timeout.connect(_spawn_ball)
+	spawn_timer.stop()
 	last_difficulty_step = 0
 	_load_tutorial_flag()
+	_configure_fx_profile()
+	tex_star4 = load("res://assets/particles/star4.svg")
+	tex_star6 = load("res://assets/particles/star6.svg")
+	tex_cross = load("res://assets/particles/cross_diamond.svg")
 
 	laser_left.ball_destroyed.connect(_on_laser_ball_destroyed)
 	laser_right.ball_destroyed.connect(_on_laser_ball_destroyed)
@@ -143,15 +198,19 @@ func _ready():
 	life_dot_texture = load("res://assets/particles/life_dot.svg")
 
 	_setup_life_dots()
+	_setup_guardian_label()
 	_setup_warning_label()
 	_setup_timer_label()
 	_setup_wall_glow()
+	_setup_lane_hud()
 	_setup_background_particles()
 	_start_music()
 	_update_ui()
 	_setup_note_player()
 	next_burst_time = randf_range(12.0, 18.0)
+	adaptive_eval_timer = ADAPTIVE_EVAL_INTERVAL
 	_load_first_run()
+	_update_spawn_wait_time()
 	if DEBUG_SPAWN_SUPER:
 		_spawn_super_powerup()
 
@@ -171,7 +230,7 @@ func _setup_life_dots():
 		dot.texture = life_dot_texture
 		dot.custom_minimum_size = Vector2(40, 40)
 		dot.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		dot.position = Vector2(40 + i * 50, 75)
+		dot.position = Vector2(30 + i * 50, 30)
 		dot.pivot_offset = Vector2(20, 20)
 		dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		$CanvasLayer.add_child(dot)
@@ -180,7 +239,7 @@ func _setup_life_dots():
 func _setup_background_particles():
 	# Layer 1: slow drifting dots (subtle)
 	bg_particles_1 = GPUParticles2D.new()
-	bg_particles_1.amount = 20
+	bg_particles_1.amount = int(max(8.0, round(20.0 * fx_particle_scale)))
 	bg_particles_1.lifetime = 10.0
 	bg_particles_1.z_index = -90
 	bg_particles_1.position = Vector2(540, 1200)
@@ -214,12 +273,12 @@ func _setup_background_particles():
 	mat1.alpha_curve = alpha_tex1
 
 	bg_particles_1.process_material = mat1
-	bg_particles_1.texture = load("res://assets/particles/star4.svg")
+	bg_particles_1.texture = tex_star4
 	add_child(bg_particles_1)
 
 	# Layer 2: tiny sparkles
 	bg_particles_2 = GPUParticles2D.new()
-	bg_particles_2.amount = 12
+	bg_particles_2.amount = int(max(5.0, round(12.0 * fx_particle_scale)))
 	bg_particles_2.lifetime = 6.0
 	bg_particles_2.z_index = -89
 	bg_particles_2.position = Vector2(540, 1200)
@@ -247,12 +306,12 @@ func _setup_background_particles():
 	mat2.alpha_curve = alpha_tex2
 
 	bg_particles_2.process_material = mat2
-	bg_particles_2.texture = load("res://assets/particles/cross_diamond.svg")
+	bg_particles_2.texture = tex_cross
 	add_child(bg_particles_2)
 
 	# Layer 3: big soft orbs (parallax depth)
 	bg_particles_3 = GPUParticles2D.new()
-	bg_particles_3.amount = 10
+	bg_particles_3.amount = int(max(4.0, round(10.0 * fx_particle_scale)))
 	bg_particles_3.lifetime = 14.0
 	bg_particles_3.z_index = -92
 	bg_particles_3.position = Vector2(540, 1200)
@@ -280,7 +339,7 @@ func _setup_background_particles():
 	mat3.alpha_curve = alpha_tex3
 
 	bg_particles_3.process_material = mat3
-	bg_particles_3.texture = load("res://assets/particles/star6.svg")
+	bg_particles_3.texture = tex_star6
 	add_child(bg_particles_3)
 
 func _start_music():
@@ -318,7 +377,7 @@ func _play_countdown():
 		countdown_label.modulate = Color(1, 1, 1, 1)
 
 		_play_sfx(snd_tick, -10.0, 1.0 + i * 0.15)
-		Input.vibrate_handheld(15)
+		_vibrate(15)
 
 		var t = create_tween()
 		t.tween_property(countdown_label, "scale", Vector2(0.5, 0.5), 0.4).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_EXPO)
@@ -332,7 +391,7 @@ func _play_countdown():
 	countdown_label.scale = Vector2(0.2, 0.2)
 	countdown_label.modulate = Color(1, 1, 1, 1)
 	_play_sfx(snd_tick, -5.0, 1.4)
-	Input.vibrate_handheld(30)
+	_vibrate(30)
 
 	var t = create_tween()
 	t.tween_property(countdown_label, "scale", Vector2(1.6, 1.6), 0.1).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
@@ -362,6 +421,54 @@ func _play_sfx(stream: AudioStream, volume_db: float = 0.0, pitch: float = 1.0):
 	player.play()
 	player.finished.connect(player.queue_free)
 
+func _configure_fx_profile():
+	fx_is_mobile = OS.has_feature("mobile")
+	fx_quality = 2
+	var gs = get_node_or_null("/root/GlobalSettings")
+	if gs:
+		fx_quality = int(clamp(float(gs.get("particle_quality")), 0.0, 2.0))
+
+	match fx_quality:
+		0:
+			fx_particle_scale = 0.58
+			fx_flash_scale = 0.86
+			fx_super_pulse_scale = 0.78
+			fx_scanline_scale = 0.80
+			fx_super_spark_interval_scale = 1.50
+			fx_super_spark_amount_scale = 0.56
+		1:
+			fx_particle_scale = 0.78
+			fx_flash_scale = 0.93
+			fx_super_pulse_scale = 0.90
+			fx_scanline_scale = 0.90
+			fx_super_spark_interval_scale = 1.24
+			fx_super_spark_amount_scale = 0.76
+		_:
+			fx_particle_scale = 1.00
+			fx_flash_scale = 1.00
+			fx_super_pulse_scale = 1.00
+			fx_scanline_scale = 1.00
+			fx_super_spark_interval_scale = 1.00
+			fx_super_spark_amount_scale = 1.00
+
+	if fx_is_mobile:
+		fx_particle_scale *= 0.88
+		fx_flash_scale *= 0.92
+		fx_super_pulse_scale *= 0.90
+		fx_scanline_scale *= 0.92
+		fx_super_spark_interval_scale *= 1.12
+		fx_super_spark_amount_scale *= 0.90
+
+func _vibrate(duration_ms: int):
+	var d = duration_ms
+	if fx_is_mobile:
+		d = int(round(float(duration_ms) * 0.90))
+	var gs = get_node_or_null("/root/GlobalSettings")
+	if gs and gs.has_method("vibrate"):
+		gs.vibrate(d)
+	elif OS.has_feature("mobile"):
+		Input.vibrate_handheld(d)
+
 func _setup_warning_label():
 	warning_label = Label.new()
 	warning_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -380,14 +487,37 @@ func _setup_warning_label():
 
 func _setup_timer_label():
 	timer_label = Label.new()
-	timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	timer_label.add_theme_font_size_override("font_size", 22)
-	timer_label.add_theme_color_override("font_color", Color(0.35, 0.35, 0.45, 0.5))
-	timer_label.position = Vector2(860, 115)
+	timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	timer_label.add_theme_font_size_override("font_size", 24)
+	timer_label.add_theme_color_override("font_color", Color(0.5, 0.55, 0.7, 0.8))
+	timer_label.position = Vector2(30, 78)
 	timer_label.size = Vector2(160, 30)
 	timer_label.text = "0:00"
 	timer_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	$CanvasLayer.add_child(timer_label)
+
+func _setup_guardian_label():
+	guardian_label = Label.new()
+	guardian_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	guardian_label.add_theme_font_size_override("font_size", 20)
+	guardian_label.position = Vector2(700, 78)
+	guardian_label.size = Vector2(240, 26)
+	guardian_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$CanvasLayer.add_child(guardian_label)
+	_update_guardian_label()
+
+func _update_guardian_label():
+	if not guardian_label:
+		return
+	if guardian_used_once:
+		guardian_label.text = "GUARDIAN: USED"
+		guardian_label.add_theme_color_override("font_color", Color(1, 0.3, 0.3, 0.7))
+	elif guardian_available:
+		guardian_label.text = "GUARDIAN: READY"
+		guardian_label.add_theme_color_override("font_color", Color(0.4, 1, 0.6, 0.8))
+	else:
+		guardian_label.text = "GUARDIAN: NONE"
+		guardian_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.7, 0.6))
 
 func _setup_wall_glow():
 	left_glow = ColorRect.new()
@@ -415,6 +545,61 @@ func _update_wall_glow():
 	gt.tween_property(left_glow, "color", left_col, 0.3)
 	gt.tween_property(right_glow, "color", right_col, 0.3)
 
+func _setup_lane_hud():
+	lane_hint_left = Label.new()
+	lane_hint_left.name = "LaneHintLeft"
+	lane_hint_left.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lane_hint_left.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lane_hint_left.size = Vector2(200, 42)
+	lane_hint_left.position = Vector2(10, 185)
+	lane_hint_left.add_theme_font_size_override("font_size", 22)
+	lane_hint_left.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$CanvasLayer.add_child(lane_hint_left)
+
+	lane_hint_right = Label.new()
+	lane_hint_right.name = "LaneHintRight"
+	lane_hint_right.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lane_hint_right.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lane_hint_right.size = Vector2(200, 42)
+	lane_hint_right.position = Vector2(870, 185)
+	lane_hint_right.add_theme_font_size_override("font_size", 22)
+	lane_hint_right.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$CanvasLayer.add_child(lane_hint_right)
+
+	_update_lane_hud(false)
+
+func _update_lane_hud(pulse: bool = true):
+	if not lane_hint_left or not lane_hint_right:
+		return
+
+	if super_active:
+		lane_hint_left.text = "ANY"
+		lane_hint_right.text = "ANY"
+		lane_hint_left.add_theme_color_override("font_color", Color(1.0, 0.95, 0.35, 0.9))
+		lane_hint_right.add_theme_color_override("font_color", Color(1.0, 0.95, 0.35, 0.9))
+	else:
+		var left_is_cyan = walls_inverted
+		lane_hint_left.text = "CYAN" if left_is_cyan else "MAGENTA"
+		lane_hint_right.text = "MAGENTA" if left_is_cyan else "CYAN"
+		lane_hint_left.add_theme_color_override("font_color", Color(0.0, 1.0, 1.0, 0.8) if left_is_cyan else Color(1.0, 0.0, 1.0, 0.8))
+		lane_hint_right.add_theme_color_override("font_color", Color(1.0, 0.0, 1.0, 0.8) if left_is_cyan else Color(0.0, 1.0, 1.0, 0.8))
+
+	if pulse:
+		_pulse_lane_hud()
+
+func _pulse_lane_hud():
+	if not lane_hint_left or not lane_hint_right:
+		return
+	lane_hint_left.scale = Vector2(0.9, 0.9)
+	lane_hint_right.scale = Vector2(0.9, 0.9)
+	lane_hint_left.modulate.a = 0.65
+	lane_hint_right.modulate.a = 0.65
+	var t = create_tween().set_parallel(true)
+	t.tween_property(lane_hint_left, "scale", Vector2(1.0, 1.0), 0.18).set_ease(Tween.EASE_OUT)
+	t.tween_property(lane_hint_right, "scale", Vector2(1.0, 1.0), 0.18).set_ease(Tween.EASE_OUT)
+	t.tween_property(lane_hint_left, "modulate:a", 1.0, 0.2)
+	t.tween_property(lane_hint_right, "modulate:a", 1.0, 0.2)
+
 func _process(delta):
 	if Input.is_action_just_pressed("ui_cancel"):
 		if not game_over:
@@ -428,6 +613,16 @@ func _process(delta):
 		return
 
 	time_elapsed += delta
+
+	if assist_window_timer > 0.0:
+		assist_window_timer -= delta
+	if bomb_pause_timer > 0.0:
+		bomb_pause_timer -= delta
+
+	adaptive_eval_timer -= delta
+	if adaptive_eval_timer <= 0.0:
+		adaptive_eval_timer = ADAPTIVE_EVAL_INTERVAL
+		_evaluate_adaptive_flow()
 
 	if timer_label:
 		var mins = int(time_elapsed) / 60
@@ -446,7 +641,12 @@ func _process(delta):
 	elif inversion_pending:
 		inversion_countdown -= delta
 		if inversion_countdown <= 0.0:
-			_start_wall_inversion()
+			if assist_window_timer > 0.0:
+				inversion_pending = false
+				_stop_inversion_warning()
+				_show_warning("HOLD")
+			else:
+				_start_wall_inversion()
 		elif inversion_countdown <= 0.45:
 			_flash_screen(Color(1, 0, 1, 0.08))
 
@@ -473,17 +673,26 @@ func _process(delta):
 			overdrive_active = false
 			_update_streak_bar()
 
+	if shield_pending:
+		shield_pending_timer -= delta
+		if shield_pending_timer <= 0.0:
+			shield_pending = false
+		elif _should_trigger_shield():
+			shield_pending = false
+			_activate_shield_wall()
+
 	if super_active:
 		super_timer -= delta
 		if super_timer <= 0.0:
 			_end_super_mode()
 		else:
+			_tick_super_fx(delta)
 			_auto_direct_balls()
 
 func _apply_difficulty_step(step: int):
 	# Gentle early ramp to let players build streaks before chaos
 	spawn_rate = max(0.7, spawn_rate - (0.12 if step < 3 else 0.18))
-	spawn_timer.wait_time = spawn_rate
+	_update_spawn_wait_time()
 
 	if step >= 2:
 		accel_pattern_chance = min(0.5, (step - 1) * 0.1)
@@ -491,27 +700,29 @@ func _apply_difficulty_step(step: int):
 	if step >= 3:
 		bomb_chance = min(0.25, 0.1 + (step - 2) * 0.03)
 
-	if time_elapsed >= INVERSION_START_TIME and step >= 3 and not inversion_active and not inversion_pending and randf() < 0.35:
+	if time_elapsed >= INVERSION_START_TIME and step >= 3 and assist_window_timer <= 0.0 and not inversion_active and not inversion_pending and randf() < 0.35:
 		_schedule_wall_inversion()
 
-	if step >= 4 and time_elapsed >= WARMUP_TIME and randf() < 0.25:
+	if step >= 4 and time_elapsed >= WARMUP_TIME and assist_window_timer <= 0.0 and randf() < 0.25:
 		_trigger_spawn_burst()
 
-	if step >= 5:
+	if step >= 5 and assist_window_timer <= 0.0:
 		_spawn_ball()
 
-	if time_elapsed >= INVERSION_START_TIME and step >= 6 and not inversion_active and not inversion_pending and randf() < 0.55:
+	if time_elapsed >= INVERSION_START_TIME and step >= 6 and assist_window_timer <= 0.0 and not inversion_active and not inversion_pending and randf() < 0.55:
 		_schedule_wall_inversion()
 
-	if time_elapsed >= next_burst_time and not spawn_burst_active:
+	if time_elapsed >= next_burst_time and assist_window_timer <= 0.0 and not spawn_burst_active:
 		next_burst_time = time_elapsed + randf_range(10.0, 16.0)
 		_trigger_spawn_burst()
 
 func _schedule_wall_inversion():
+	if assist_window_timer > 0.0 or super_active:
+		return
 	inversion_pending = true
 	inversion_countdown = INVERSION_WARNING_TIME
 	_show_warning("SWITCHING!")
-	Input.vibrate_handheld(30)
+	_vibrate(30)
 	_start_inversion_warning()
 
 func _start_wall_inversion():
@@ -526,9 +737,10 @@ func _start_wall_inversion():
 		laser_right.set_inverted(true)
 	_sync_balls_inversion()
 	_update_wall_glow()
+	_update_lane_hud(true)
 	_show_warning("INVERSION!")
 	_flash_screen(Color(1, 0, 1, 0.15))
-	Input.vibrate_handheld(50)
+	_vibrate(50)
 
 func _end_wall_inversion():
 	walls_inverted = false
@@ -540,13 +752,14 @@ func _end_wall_inversion():
 		laser_right.set_inverted(false)
 	_sync_balls_inversion()
 	_update_wall_glow()
+	_update_lane_hud(true)
 	_show_warning("NORMAL")
 
 func _trigger_spawn_burst():
 	spawn_burst_active = true
 	_show_warning("BURST!")
-	Input.vibrate_handheld(40)
-	var count = randi_range(3, 6)
+	_vibrate(40)
+	var count = randi_range(2, 4) if assist_window_timer > 0.0 else randi_range(3, 6)
 	for i in range(count):
 		_spawn_ball()
 		await get_tree().create_timer(0.2).timeout
@@ -567,7 +780,36 @@ func _show_warning(text: String):
 	tween.tween_property(warning_label, "modulate", Color(1, 1, 1, 0), 0.3)
 	tween.tween_callback(func(): warning_label.visible = false)
 
+func _update_spawn_wait_time():
+	var wait_target = spawn_rate + adaptive_spawn_offset
+	if assist_window_timer > 0.0:
+		wait_target += 0.12
+	wait_target = clamp(wait_target, 0.55, 2.4)
+
+	if super_active:
+		spawn_timer.wait_time = max(0.35, wait_target * super_spawn_multiplier)
+	elif not super_cooldown_active:
+		spawn_timer.wait_time = wait_target
+
+func _evaluate_adaptive_flow():
+	var pressure = clamp(float(2 - lives) / 2.0, 0.0, 1.0)
+	var performance = clamp(float(recent_hit_window - recent_miss_window * 2) / 8.0, -1.0, 1.0)
+	var target_flow = clamp(0.5 + performance * 0.35 - pressure * 0.22, 0.0, 1.0)
+
+	adaptive_flow_score = lerp(adaptive_flow_score, target_flow, 0.35)
+	var target_offset = lerp(ADAPTIVE_SPAWN_MAX, ADAPTIVE_SPAWN_MIN, adaptive_flow_score)
+	adaptive_spawn_offset = clamp(lerp(adaptive_spawn_offset, target_offset, 0.45), ADAPTIVE_SPAWN_MIN, ADAPTIVE_SPAWN_MAX)
+
+	recent_hit_window = int(round(float(recent_hit_window) * 0.55))
+	recent_miss_window = int(round(float(recent_miss_window) * 0.60))
+	_update_spawn_wait_time()
+
 func _spawn_ball():
+	if super_cooldown_active:
+		return
+	if super_active:
+		_spawn_super_stream_pair()
+		return
 	if not ball_scene:
 		return
 	var ball = ball_scene.instantiate() as BallDragThrow
@@ -591,7 +833,9 @@ func _spawn_ball():
 		ball.ball_type = BallDragThrow.BallType.YELLOW
 
 	var grav = 0.25 + (time_elapsed / 80.0)
-	ball.gravity_scale = min(grav, 1.0)
+	if super_active:
+		grav *= SUPER_GRAVITY_MULT
+	ball.gravity_scale = min(grav, 2.4)
 
 	if time_elapsed >= WARMUP_TIME and randf() < accel_pattern_chance:
 		ball.has_accel_pattern = true
@@ -601,6 +845,7 @@ func _spawn_ball():
 	ball.walls_inverted = walls_inverted
 	if super_active:
 		ball.super_mode = true
+		ball.universal_wall_match = true
 		ball.auto_directed = false
 	ball.bomb_exploded.connect(_on_bomb_exploded)
 	ball.ball_missed.connect(_on_ball_missed)
@@ -612,6 +857,91 @@ func _spawn_ball():
 
 	_spawn_direction_hint(ball)
 
+	if super_active:
+		_super_direct_ball(ball)
+
+func _spawn_super_stream_pair():
+	if not ball_scene:
+		return
+
+	var bounds = _get_super_bounds()
+	var left_bound = bounds.x
+	var right_bound = bounds.y
+	var mid_x = (left_bound + right_bound) * 0.5
+
+	var base_y = -120.0
+	var end_y = randf_range(900.0, 1200.0)
+	var amp_scale = lerp(0.82, 1.0, fx_super_pulse_scale)
+	var duration_scale = lerp(1.12, 1.0, fx_super_pulse_scale)
+	var amplitude = randf_range(80.0, 160.0) * amp_scale
+	var duration = randf_range(0.9, 1.2) * duration_scale
+
+	var cyan = ball_scene.instantiate() as BallDragThrow
+	var magenta = ball_scene.instantiate() as BallDragThrow
+	if not cyan or not magenta:
+		return
+
+	cyan.ball_type = BallDragThrow.BallType.CYAN
+	magenta.ball_type = BallDragThrow.BallType.MAGENTA
+
+	cyan.position = Vector2(mid_x - 40.0, base_y)
+	magenta.position = Vector2(mid_x + 40.0, base_y)
+
+	_setup_super_stream_ball(cyan, right_bound - 10.0, end_y, amplitude, duration, 0.0)
+	_setup_super_stream_ball(magenta, left_bound + 10.0, end_y, amplitude, duration, PI)
+
+	add_child(cyan)
+	add_child(magenta)
+
+	_spawn_direction_hint(cyan)
+	_spawn_direction_hint(magenta)
+
+func _setup_super_stream_ball(ball: BallDragThrow, target_x: float, end_y: float, amp: float, duration: float, phase: float):
+	var pre_layer = ball.collision_layer
+	var pre_mask = ball.collision_mask
+
+	ball.walls_inverted = walls_inverted
+	ball.super_mode = true
+	ball.universal_wall_match = true
+	ball.auto_directed = true
+	ball.freeze = true
+	ball.gravity_scale = 0.0
+	ball.collision_layer = 0
+	ball.collision_mask = 0
+	ball.angular_velocity = randf_range(-8.0, 8.0)
+	ball.is_thrown = true
+	ball.throw_time = Time.get_ticks_msec() / 1000.0
+
+	var start = ball.global_position
+	var end = Vector2(target_x, end_y)
+	var lateral_freq = randf_range(1.6, 2.4)
+	var detail_freq = randf_range(4.2, 6.8)
+	var vertical_freq = randf_range(2.6, 4.0)
+	var roll_sign = -1.0 if randf() < 0.5 else 1.0
+
+	var tween = create_tween()
+	tween.tween_method(func(t):
+		if not is_instance_valid(ball):
+			return
+		var env = sin(t * PI)
+		var primary = sin(t * TAU * lateral_freq + phase) * amp
+		var detail = sin(t * TAU * detail_freq + phase * 1.7) * (amp * 0.24)
+		var x = lerp(start.x, end.x, t) + (primary + detail) * env
+		var y = lerp(start.y, end.y, t) + sin(t * TAU * vertical_freq + phase * 0.35) * (amp * 0.12) * env
+		ball.global_position = Vector2(x, y)
+		ball.rotation = roll_sign * (0.18 * sin(t * TAU * 3.2 + phase) + 0.08 * sin(t * TAU * 7.4 + phase * 0.7))
+	, 0.0, 1.0, duration).set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_SINE)
+
+	tween.tween_callback(func():
+		if not is_instance_valid(ball):
+			return
+		ball.freeze = false
+		ball.collision_layer = pre_layer
+		ball.collision_mask = pre_mask
+		var dir = Vector2(target_x - ball.global_position.x, randf_range(520.0, 760.0)).normalized()
+		ball.linear_velocity = dir * randf_range(1700.0, 2000.0)
+	)
+
 func _on_laser_ball_destroyed(points: int, ball: BallDragThrow):
 	if not combo_frozen:
 		combo += 1
@@ -619,6 +949,9 @@ func _on_laser_ball_destroyed(points: int, ball: BallDragThrow):
 		if combo > max_combo:
 			max_combo = combo
 	wrong_wall_streak = 0
+	recent_hit_window = min(recent_hit_window + 1, 20)
+	if assist_window_timer > 0.0 and combo >= 6:
+		assist_window_timer = max(0.0, assist_window_timer - 1.5)
 
 	var multiplier = 1.0 + combo * 0.15
 	if overdrive_active:
@@ -635,17 +968,18 @@ func _on_laser_ball_destroyed(points: int, ball: BallDragThrow):
 		if combo == 5 and not first_streak_rewarded:
 			first_streak_rewarded = true
 			total += 50
-			_show_streak_banner("STREAK x5 +50", Color(1, 1, 0.2, 1))
+			_show_streak_banner("BONUS +50", Color(1, 1, 0.2, 1))
 			_spawn_powerup_for_streak()
 		elif combo == 10:
-			_show_streak_banner("STREAK x10", Color(0, 1, 1, 1))
+			_show_streak_banner("OVERDRIVE READY", Color(0, 1, 1, 1))
 			_activate_overdrive()
 		elif combo == 15:
-			_show_streak_banner("STREAK x15", Color(1, 0, 1, 1))
+			_show_streak_banner("SHIELD READY", Color(1, 0, 1, 1))
 			_grant_shield()
 		elif combo == 12:
 			_activate_double_points()
 		elif combo == 25:
+			_show_streak_banner("MEGA BONUS", Color(1.0, 0.95, 0.35, 1.0))
 			_spawn_super_powerup()
 
 	if double_points_active:
@@ -660,9 +994,9 @@ func _on_laser_ball_destroyed(points: int, ball: BallDragThrow):
 	# Correct-hit sound handled by piano notes
 
 	if combo >= 5:
-		Input.vibrate_handheld(40)
+		_vibrate(40)
 	else:
-		Input.vibrate_handheld(20)
+		_vibrate(20)
 
 	# Every x15 combo = regain a life
 	if combo > 0 and combo % 15 == 0 and lives < 3:
@@ -709,7 +1043,7 @@ func _show_streak_banner(text: String, color: Color):
 func _update_streak_bar():
 	if not streak_bar or not streak_label:
 		return
-	var milestones = [5, 10, 15, 20]
+	var milestones = [5, 10, 12, 15, 25]
 	var current = 0
 	var next = milestones[milestones.size() - 1]
 	for m in milestones:
@@ -721,11 +1055,37 @@ func _update_streak_bar():
 	if next > current:
 		progress = float(combo - current) / float(next - current) * 100.0
 	streak_bar.value = clamp(progress, 0.0, 100.0)
-	streak_label.text = "STREAK " + str(combo) + " / " + str(next)
+	var goal_name = _get_goal_name(next)
+	streak_label.text = "GOAL  " + goal_name + "   " + str(min(combo, next)) + "/" + str(next)
+	match next:
+		5:
+			streak_label.add_theme_color_override("font_color", Color(0.85, 0.95, 1.0, 0.9))
+		10:
+			streak_label.add_theme_color_override("font_color", Color(0.0, 1.0, 1.0, 0.95))
+		12:
+			streak_label.add_theme_color_override("font_color", Color(1.0, 1.0, 0.45, 0.95))
+		15:
+			streak_label.add_theme_color_override("font_color", Color(1.0, 0.5, 1.0, 0.95))
+		25:
+			streak_label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.35, 1.0))
+		_:
+			streak_label.add_theme_color_override("font_color", Color(0.7, 0.8, 1, 0.85))
 	if overdrive_active:
-		streak_label.add_theme_color_override("font_color", Color(1, 1, 0.5, 1))
-	else:
-		streak_label.add_theme_color_override("font_color", Color(0.7, 0.8, 1, 0.85))
+		streak_label.add_theme_color_override("font_color", Color(1, 1, 0.55, 1))
+
+func _get_goal_name(milestone: int) -> String:
+	match milestone:
+		5:
+			return "POWER DROP"
+		10:
+			return "OVERDRIVE"
+		12:
+			return "2X BOOST"
+		15:
+			return "SHIELD"
+		25:
+			return "MEGA BONUS"
+	return "SURVIVE"
 
 func _activate_double_points():
 	double_points_active = true
@@ -739,10 +1099,11 @@ func _activate_overdrive():
 	_update_streak_bar()
 
 func _grant_shield():
-	if guardian_available:
+	if guardian_available or guardian_used_once:
 		return
 	guardian_available = true
-	_show_streak_banner("POWER-UP!", Color(0.4, 1, 0.6, 1))
+	_update_guardian_label()
+	_show_streak_banner("SHIELD CHARGED", Color(0.4, 1, 0.6, 1))
 
 func _spawn_powerup_for_streak():
 	if not powerup_scene:
@@ -763,6 +1124,11 @@ func _spawn_super_powerup():
 		return
 	if not powerup_scene:
 		return
+	for child in get_children():
+		if child is PowerupDrop:
+			var p_child = child as PowerupDrop
+			if p_child.powerup_type == PowerupDrop.PowerupType.SUPER:
+				return
 	var p = powerup_scene.instantiate() as PowerupDrop
 	if not p:
 		return
@@ -775,14 +1141,41 @@ func _on_powerup_activated(p_type: int):
 	match p_type:
 		PowerupDrop.PowerupType.HEART:
 			if lives < 3:
-				lives += 1
+				_regain_life()
 				_update_ui()
 				_show_streak_banner("+1 LIFE", Color(0.3, 1, 0.4, 1))
 		PowerupDrop.PowerupType.SHIELD_WALL:
-			_activate_shield_wall()
+			_arm_shield()
 		PowerupDrop.PowerupType.SUPER:
 			_start_super_mode()
 
+
+func _arm_shield():
+	shield_pending = true
+	shield_pending_timer = SHIELD_PENDING_DURATION
+	_show_streak_banner("SHIELD READY", Color(0.4, 1, 0.6, 1))
+
+func _should_trigger_shield() -> bool:
+	if not kill_zone:
+		return false
+	var kill_y = kill_zone.global_position.y - 20.0
+	for child in get_children():
+		if child is BallDragThrow:
+			var ball = child as BallDragThrow
+			if ball.ball_type == BallDragThrow.BallType.BOMB:
+				continue
+			if ball.is_grabbed or ball.is_thrown:
+				continue
+			var vy = ball.linear_velocity.y
+			if vy < 80.0:
+				continue
+			var dist = kill_y - ball.global_position.y
+			if dist <= 0.0:
+				return true
+			var t = dist / vy
+			if t <= SHIELD_TRIGGER_TIME:
+				return true
+	return false
 
 func _activate_shield_wall():
 	if has_node("ShieldWall"):
@@ -792,32 +1185,71 @@ func _activate_shield_wall():
 	wall.name = "ShieldWall"
 	wall.position = Vector2(540, 2350)
 	add_child(wall)
-	_show_streak_banner("POWER-UP!", Color(1, 1, 0.4, 1))
-	await get_tree().create_timer(6.0).timeout
+	_show_streak_banner("SHIELD!", Color(0.4, 1, 0.6, 1))
+	await get_tree().create_timer(SHIELD_ACTIVE_DURATION).timeout
 	if is_instance_valid(wall):
 		wall.queue_free()
 
 func _start_super_mode():
 	if super_active:
 		return
+	if inversion_pending:
+		inversion_pending = false
+		_stop_inversion_warning()
 	super_active = true
-	super_timer = 6.5
+	super_timer = SUPER_DURATION
 	combo_frozen = true
+	super_fx_phase = randf() * TAU
+	super_spark_timer = 0.18 * fx_super_spark_interval_scale
+	_sync_balls_super_state(true)
+	_capture_existing_balls_for_super()
 	_spawn_super_visuals()
-	# Speed up spawns
-	spawn_timer.wait_time = max(0.35, spawn_timer.wait_time * super_spawn_multiplier)
+	_update_lane_hud(true)
+	_show_warning("MEGA BONUS!")
+	_flash_screen(Color(1, 0.95, 0.35, 0.18))
+	_update_spawn_wait_time()
 	# Bonus music feel (pitch only, actual track later)
 	if music_player:
 		music_player.pitch_scale = bonus_pitch
 
+func _capture_existing_balls_for_super():
+	for child in get_children():
+		if child is BallDragThrow:
+			var ball = child as BallDragThrow
+			if ball.ball_type == BallDragThrow.BallType.BOMB:
+				continue
+			if ball.is_grabbed:
+				continue
+			if ball.auto_directed:
+				continue
+			_super_direct_ball(ball)
+
 func _end_super_mode():
 	super_active = false
 	combo_frozen = false
+	super_spark_timer = 0.0
+	_sync_balls_super_state(false)
 	_restore_super_visuals()
-	# Restore spawns
-	spawn_timer.wait_time = spawn_rate
+	_update_wall_glow()
+	_update_lane_hud(true)
+	_show_warning("RULES BACK")
+	_update_spawn_wait_time()
 	if music_player:
 		music_player.pitch_scale = 1.0
+	_start_super_cooldown()
+
+func _start_super_cooldown():
+	if super_cooldown_active:
+		return
+	super_cooldown_active = true
+	spawn_timer.stop()
+	var cooldown = get_tree().create_timer(SUPER_COOLDOWN)
+	cooldown.timeout.connect(func():
+		super_cooldown_active = false
+		if not game_over and game_started:
+			_update_spawn_wait_time()
+			spawn_timer.start()
+	)
 
 func _spawn_super_visuals():
 	if background and background.material:
@@ -837,7 +1269,9 @@ func _spawn_super_visuals():
 		if sm2 is ShaderMaterial:
 			var ss = sm2 as ShaderMaterial
 			bg_saved.scan_intensity = ss.get_shader_parameter("intensity")
-			ss.set_shader_parameter("intensity", 0.22)
+			ss.set_shader_parameter("intensity", 0.22 * fx_scanline_scale)
+	_spawn_super_vignette()
+	_spawn_super_burst()
 
 func _restore_super_visuals():
 	if background and background.material:
@@ -853,6 +1287,137 @@ func _restore_super_visuals():
 		if sm2 is ShaderMaterial:
 			var ss = sm2 as ShaderMaterial
 			ss.set_shader_parameter("intensity", bg_saved.scan_intensity)
+	_clear_super_vignette()
+
+func _spawn_super_vignette():
+	if super_vignette and is_instance_valid(super_vignette):
+		super_vignette.queue_free()
+	super_vignette = ColorRect.new()
+	super_vignette.name = "SuperVignette"
+	super_vignette.color = Color(1, 0.95, 0.25, 0.07)
+	super_vignette.anchors_preset = Control.PRESET_FULL_RECT
+	super_vignette.anchor_right = 1.0
+	super_vignette.anchor_bottom = 1.0
+	super_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$CanvasLayer.add_child(super_vignette)
+
+	if super_pulse_tween and super_pulse_tween.is_valid():
+		super_pulse_tween.kill()
+	super_pulse_tween = null
+
+func _clear_super_vignette():
+	if super_pulse_tween and super_pulse_tween.is_valid():
+		super_pulse_tween.kill()
+	super_pulse_tween = null
+	if super_vignette and is_instance_valid(super_vignette):
+		var vt = create_tween()
+		vt.tween_property(super_vignette, "modulate:a", 0.0, 0.3)
+		vt.tween_callback(super_vignette.queue_free)
+	super_vignette = null
+
+func _spawn_super_burst():
+	var center = Vector2(540, 920)
+	var textures = [tex_star4, tex_star6, tex_cross]
+	for i in range(textures.size()):
+		var p = GPUParticles2D.new()
+		p.position = center
+		p.emitting = false
+		p.amount = int(max(8.0, round(18.0 * fx_super_spark_amount_scale)))
+		p.lifetime = lerp(0.8, 1.1, fx_super_pulse_scale)
+		p.one_shot = true
+		p.explosiveness = 1.0
+		p.texture = textures[i]
+
+		var mat = ParticleProcessMaterial.new()
+		mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+		mat.emission_sphere_radius = 30.0
+		mat.spread = 180.0
+		mat.initial_velocity_min = lerp(170.0, 220.0, fx_super_pulse_scale)
+		mat.initial_velocity_max = lerp(300.0, 420.0, fx_super_pulse_scale)
+		mat.gravity = Vector3(0, 260, 0)
+		mat.scale_min = 0.5
+		mat.scale_max = 1.3
+		mat.color = Color(1.0, 0.95, 0.4, 1.0)
+		mat.angular_velocity_min = -120.0
+		mat.angular_velocity_max = 120.0
+		mat.particle_flag_disable_z = true
+
+		p.process_material = mat
+		add_child(p)
+		p.emitting = true
+		p.finished.connect(p.queue_free)
+
+func _tick_super_fx(delta: float):
+	super_fx_phase += delta
+
+	if super_vignette and is_instance_valid(super_vignette):
+		var beat = 0.5 + 0.5 * sin(super_fx_phase * 5.6)
+		var tint = 0.5 + 0.5 * sin(super_fx_phase * 2.3 + 0.8)
+		super_vignette.color = Color(
+			1.0,
+			lerp(0.88, 1.0, tint),
+			lerp(0.20, 0.40, beat),
+			lerp(0.05, 0.15, beat) * fx_flash_scale
+		)
+
+	if background and background.material and background.material is ShaderMaterial:
+		var sm = background.material as ShaderMaterial
+		var accent = 0.23 + 0.11 * (0.5 + 0.5 * sin(super_fx_phase * 4.2))
+		sm.set_shader_parameter("accent_strength", accent * fx_super_pulse_scale)
+
+	if scanlines and scanlines.material and scanlines.material is ShaderMaterial:
+		var ss = scanlines.material as ShaderMaterial
+		var scan = 0.16 + 0.10 * (0.5 + 0.5 * sin(super_fx_phase * 6.8 + 1.1))
+		ss.set_shader_parameter("intensity", scan * fx_scanline_scale)
+
+	if left_glow and right_glow:
+		var glow_beat = 0.5 + 0.5 * sin(super_fx_phase * 7.2)
+		var alpha = lerp(0.22, 0.42, glow_beat) * fx_super_pulse_scale
+		left_glow.color = Color(0, 1, 1, alpha) if walls_inverted else Color(1, 0, 1, alpha)
+		right_glow.color = Color(1, 0, 1, alpha) if walls_inverted else Color(0, 1, 1, alpha)
+
+	super_spark_timer -= delta
+	if super_spark_timer <= 0.0:
+		super_spark_timer = (SUPER_SPARK_INTERVAL + randf_range(-0.12, 0.12)) * fx_super_spark_interval_scale
+		var spark_pos = Vector2(randf_range(220.0, 860.0), randf_range(420.0, 1550.0))
+		_spawn_super_spark(spark_pos)
+
+func _spawn_super_spark(pos: Vector2):
+	var p = GPUParticles2D.new()
+	p.position = pos
+	p.emitting = false
+	var min_amount = int(max(4.0, round(8.0 * fx_super_spark_amount_scale)))
+	var max_amount = int(max(float(min_amount), round(12.0 * fx_super_spark_amount_scale)))
+	p.amount = randi_range(min_amount, max_amount)
+	p.lifetime = lerp(0.4, 0.55, fx_super_pulse_scale)
+	p.one_shot = true
+	p.explosiveness = 1.0
+	p.texture = tex_star4 if randi() % 2 == 0 else tex_cross
+
+	var mat = ParticleProcessMaterial.new()
+	mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
+	mat.emission_sphere_radius = 10.0
+	mat.spread = 180.0
+	mat.initial_velocity_min = lerp(90.0, 130.0, fx_super_pulse_scale)
+	mat.initial_velocity_max = lerp(180.0, 260.0, fx_super_pulse_scale)
+	mat.gravity = Vector3(0, 160, 0)
+	mat.scale_min = 0.25
+	mat.scale_max = 0.85
+	var color_pick = randi() % 3
+	if color_pick == 0:
+		mat.color = Color(1.0, 0.95, 0.45, 0.95)
+	elif color_pick == 1:
+		mat.color = Color(0.4, 1.0, 1.0, 0.9)
+	else:
+		mat.color = Color(1.0, 0.45, 1.0, 0.9)
+	mat.angular_velocity_min = -180.0
+	mat.angular_velocity_max = 180.0
+	mat.particle_flag_disable_z = true
+
+	p.process_material = mat
+	add_child(p)
+	p.emitting = true
+	p.finished.connect(p.queue_free)
 
 func _auto_direct_balls():
 	var mid_y = get_viewport_rect().size.y * 0.5
@@ -862,35 +1427,135 @@ func _auto_direct_balls():
 			if ball.ball_type == BallDragThrow.BallType.BOMB:
 				continue
 			ball.super_mode = true
-			if not ball.is_grabbed and not ball.is_thrown and ball.global_position.y > mid_y:
-				if not ball.auto_directed:
-					ball.auto_directed = true
-					var target_x = 1000.0
-					if ball.ball_type == BallDragThrow.BallType.CYAN:
-						target_x = 1040.0 if not walls_inverted else 40.0
-					elif ball.ball_type == BallDragThrow.BallType.MAGENTA:
-						target_x = 40.0 if not walls_inverted else 1040.0
-					elif ball.ball_type == BallDragThrow.BallType.YELLOW:
-						target_x = 1040.0 if ball.global_position.x > 540 else 40.0
-					var dir = Vector2(target_x - ball.global_position.x, -200.0).normalized()
-					ball.apply_central_impulse(dir * 900.0)
+			ball.universal_wall_match = true
+			if ball.is_grabbed:
+				continue
+			if ball.auto_directed:
+				continue
+
+			if ball.is_thrown:
+				_super_direct_ball(ball)
+				continue
+
+			if ball.global_position.y > mid_y:
+				ball.auto_directed = true
+				var target_x = 1000.0
+				if ball.ball_type == BallDragThrow.BallType.CYAN:
+					target_x = 1040.0 if not walls_inverted else 40.0
+				elif ball.ball_type == BallDragThrow.BallType.MAGENTA:
+					target_x = 40.0 if not walls_inverted else 1040.0
+				elif ball.ball_type == BallDragThrow.BallType.YELLOW:
+					target_x = 1040.0 if ball.global_position.x > 540 else 40.0
+				var dir = Vector2(target_x - ball.global_position.x, -200.0).normalized()
+				ball.apply_central_impulse(dir * 900.0)
+
+func _super_direct_ball(ball: BallDragThrow):
+	if not ball:
+		return
+	if ball.ball_type == BallDragThrow.BallType.BOMB:
+		return
+	ball.super_mode = true
+	ball.universal_wall_match = true
+
+	var bounds = _get_super_bounds()
+	var left_bound = bounds.x
+	var right_bound = bounds.y
+
+	var target_x = right_bound - 10.0
+	if ball.ball_type == BallDragThrow.BallType.CYAN:
+		target_x = right_bound - 10.0 if not walls_inverted else left_bound + 10.0
+	elif ball.ball_type == BallDragThrow.BallType.MAGENTA:
+		target_x = left_bound + 10.0 if not walls_inverted else right_bound - 10.0
+	elif ball.ball_type == BallDragThrow.BallType.YELLOW:
+		target_x = right_bound - 10.0 if ball.global_position.x > 540 else left_bound + 10.0
+
+	var start = ball.global_position
+	var end = Vector2(target_x, randf_range(900.0, 1200.0))
+	var dir_x = 1.0 if target_x > start.x else -1.0
+
+	var tight = randf() < 0.5
+	var mid1 = start + Vector2(
+		randf_range(60.0, 140.0) * dir_x if tight else randf_range(120.0, 260.0) * dir_x,
+		randf_range(140.0, 220.0) if tight else randf_range(220.0, 360.0)
+	)
+	var mid2 = start + Vector2(
+		randf_range(180.0, 320.0) * dir_x if tight else randf_range(300.0, 520.0) * dir_x,
+		randf_range(280.0, 460.0) if tight else randf_range(420.0, 660.0)
+	)
+	if randi() % 2 == 0:
+		var arc = randf_range(120.0, 200.0) if tight else randf_range(200.0, 320.0)
+		mid1.y -= arc
+		mid2.y += arc
+
+	var min_y = 120.0
+	var max_y = 2200.0
+	mid1.x = clamp(mid1.x, left_bound, right_bound)
+	mid2.x = clamp(mid2.x, left_bound, right_bound)
+	mid1.y = clamp(mid1.y, min_y, max_y)
+	mid2.y = clamp(mid2.y, min_y, max_y)
+	end.x = clamp(end.x, left_bound + 5.0, right_bound - 5.0)
+	end.y = clamp(end.y, min_y, max_y)
+
+	# Choreo: disable collisions while we arc, then re-enable and fling into the wall
+	var pre_layer = ball.collision_layer
+	var pre_mask = ball.collision_mask
+	ball.collision_layer = 0
+	ball.collision_mask = 0
+	ball.freeze = true
+	ball.gravity_scale = 0.0
+	ball.angular_velocity = randf_range(-6.0, 6.0)
+	ball.auto_directed = true
+	ball.is_thrown = true
+	ball.throw_time = Time.get_ticks_msec() / 1000.0
+
+	var t = create_tween()
+	t.tween_property(ball, "global_position", mid1, randf_range(0.18, 0.26)).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_SINE)
+	t.tween_property(ball, "global_position", mid2, randf_range(0.18, 0.26)).set_ease(Tween.EASE_IN_OUT).set_trans(Tween.TRANS_SINE)
+	t.tween_property(ball, "global_position", end, randf_range(0.2, 0.3)).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_QUAD)
+	t.tween_callback(func():
+		if not is_instance_valid(ball):
+			return
+		ball.freeze = false
+		ball.collision_layer = pre_layer
+		ball.collision_mask = pre_mask
+		var dir = Vector2(target_x - ball.global_position.x, randf_range(520.0, 760.0)).normalized()
+		ball.linear_velocity = dir * randf_range(1600.0, 1850.0)
+	)
+
+func _get_super_bounds() -> Vector2:
+	var left = 40.0
+	var right = 1040.0
+	if laser_left and laser_right:
+		left = laser_left.global_position.x + 25.0 + SUPER_BOUNDS_MARGIN
+		right = laser_right.global_position.x - 25.0 - SUPER_BOUNDS_MARGIN
+	return Vector2(left, right)
 
 func _get_effective_bomb_chance() -> float:
-	if super_active:
+	if super_active or bomb_pause_timer > 0.0:
 		return 0.0
+	var chance = bomb_chance
 	if first_run_active:
 		if time_elapsed < 20.0:
 			return 0.0
 		if time_elapsed < 30.0:
 			var t = (time_elapsed - 20.0) / 10.0
-			return bomb_chance * t
-		return bomb_chance
-	if time_elapsed < 15.0:
+			chance = bomb_chance * t
+		else:
+			chance = bomb_chance
+	elif time_elapsed < 15.0:
 		return 0.0
-	if time_elapsed < 25.0:
-		var t = (time_elapsed - 15.0) / 10.0
-		return bomb_chance * t
-	return bomb_chance
+	elif time_elapsed < 25.0:
+		var t2 = (time_elapsed - 15.0) / 10.0
+		chance = bomb_chance * t2
+
+	if assist_window_timer > 0.0:
+		chance *= 0.45
+	if lives <= 1:
+		chance *= 0.55
+
+	var flow_scale = lerp(0.7, 1.15, adaptive_flow_score)
+	chance *= flow_scale
+	return clamp(chance, 0.0, 0.30)
 
 func _load_tutorial_flag():
 	if FileAccess.file_exists("user://tutorial_seen.save"):
@@ -937,15 +1602,33 @@ func _maybe_combo_flash():
 		recent_combo_flash = false
 
 func _use_guardian() -> bool:
-	if not guardian_available:
+	if not guardian_available or guardian_used_once:
 		return false
 	guardian_available = false
-	lives = max(lives, 1)
+	guardian_used_once = true
+	lives = 1
+	assist_window_timer = max(assist_window_timer, ASSIST_WINDOW_DURATION + 2.0)
+	bomb_pause_timer = max(bomb_pause_timer, BOMB_PAUSE_ON_MISS + 2.0)
+	_update_spawn_wait_time()
+	_restore_guardian_life_dot()
+	_update_guardian_label()
 	_update_ui()
 	_show_streak_banner("SAVE!", Color(0, 1, 0.6, 1))
 	_flash_screen(Color(0, 1, 0.6, 0.18))
-	Input.vibrate_handheld(80)
+	_vibrate(80)
 	return true
+
+func _restore_guardian_life_dot():
+	if life_dots.size() == 0:
+		return
+	var dot = life_dots[0]
+	dot.visible = true
+	dot.modulate = Color(0, 1, 0, 0)
+	dot.scale = Vector2(0.2, 0.2)
+	var t = create_tween()
+	t.tween_property(dot, "scale", Vector2(1.5, 1.5), 0.15).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	t.parallel().tween_property(dot, "modulate", Color(1, 1, 1, 1), 0.15)
+	t.tween_property(dot, "scale", Vector2(1.0, 1.0), 0.1)
 
 func _load_first_run():
 	first_run_active = not FileAccess.file_exists("user://first_run_done.save")
@@ -972,6 +1655,19 @@ func _sync_balls_inversion():
 		if child is BallDragThrow:
 			var ball = child as BallDragThrow
 			ball.walls_inverted = walls_inverted
+
+func _sync_balls_super_state(active: bool):
+	for child in get_children():
+		if child is BallDragThrow:
+			var ball = child as BallDragThrow
+			if ball.ball_type == BallDragThrow.BallType.BOMB:
+				ball.super_mode = false
+				ball.universal_wall_match = false
+				continue
+			ball.super_mode = active
+			ball.universal_wall_match = active
+			if not active:
+				ball.auto_directed = false
 
 func _setup_note_player():
 	note_player = AudioStreamPlayer.new()
@@ -1063,7 +1759,10 @@ func _show_perfect_popup(bonus: int):
 
 func _regain_life():
 	lives += 1
-	Input.vibrate_handheld(60)
+	recent_hit_window = min(recent_hit_window + 2, 20)
+	assist_window_timer = max(0.0, assist_window_timer - 1.0)
+	_update_spawn_wait_time()
+	_vibrate(60)
 	_flash_screen(Color(0, 1, 0, 0.15))
 
 	# Show the life dot that was hidden
@@ -1086,14 +1785,19 @@ func _regain_life():
 
 func _on_wrong_wall():
 	wrong_wall_streak += 1
+	recent_miss_window = min(recent_miss_window + 1, 20)
+	adaptive_flow_score = max(0.0, adaptive_flow_score - 0.08)
 	if wrong_wall_streak >= 2:
 		wrong_wall_streak = 0
 		_on_ball_missed()
 		return
 	combo = 0
+	if lives <= 2:
+		assist_window_timer = max(assist_window_timer, 2.0)
+		_update_spawn_wait_time()
 	_update_ui()
 	_flash_screen(Color(1, 0.5, 0, 0.15))
-	Input.vibrate_handheld(50)
+	_vibrate(50)
 
 func _check_milestone():
 	var milestones = [100, 250, 500, 1000, 2000, 5000]
@@ -1125,7 +1829,7 @@ func _show_milestone(value: int):
 	t.tween_property(label, "modulate:a", 0.0, 0.3)
 	t.tween_callback(label.queue_free)
 	_flash_screen(Color(1, 1, 0, 0.1))
-	Input.vibrate_handheld(60)
+	_vibrate(60)
 
 func _spawn_score_popup(points: int):
 	var popup = Label.new()
@@ -1163,9 +1867,21 @@ func _on_ball_missed():
 	overdrive_active = false
 	double_points_active = false
 	balls_thrown += 1
+	recent_miss_window = min(recent_miss_window + 2, 20)
+
+	adaptive_flow_score = max(0.0, adaptive_flow_score - 0.2)
+	adaptive_spawn_offset = clamp(adaptive_spawn_offset + 0.08, ADAPTIVE_SPAWN_MIN, ADAPTIVE_SPAWN_MAX)
+	assist_window_timer = max(assist_window_timer, ASSIST_WINDOW_DURATION + (1.5 if lives <= 1 else 0.0))
+	bomb_pause_timer = max(bomb_pause_timer, BOMB_PAUSE_ON_MISS + (1.5 if lives <= 1 else 0.0))
+	if inversion_pending:
+		inversion_pending = false
+		_stop_inversion_warning()
+	_update_spawn_wait_time()
+	if lives <= 2:
+		_show_warning("BREATHING ROOM")
 
 	_play_sfx(snd_miss, -6.0, 0.7)
-	Input.vibrate_handheld(80)
+	_vibrate(80)
 	_duck_music(-14.0, 0.2)
 
 	if camera:
@@ -1202,17 +1918,21 @@ func _start_slow_mo():
 	slow_mo_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	$CanvasLayer.add_child(slow_mo_vignette)
 
-	var pulse = create_tween().set_loops()
-	pulse.tween_property(slow_mo_vignette, "color:a", 0.15, 0.6).set_ease(Tween.EASE_IN_OUT)
-	pulse.tween_property(slow_mo_vignette, "color:a", 0.04, 0.6).set_ease(Tween.EASE_IN_OUT)
+	if slow_mo_vignette_tween and slow_mo_vignette_tween.is_valid():
+		slow_mo_vignette_tween.kill()
+	slow_mo_vignette_tween = create_tween().set_loops()
+	slow_mo_vignette_tween.tween_property(slow_mo_vignette, "color:a", 0.15, 0.6).set_ease(Tween.EASE_IN_OUT)
+	slow_mo_vignette_tween.tween_property(slow_mo_vignette, "color:a", 0.04, 0.6).set_ease(Tween.EASE_IN_OUT)
 
 	_show_warning("LAST LIFE!")
 
 	# Pulse the remaining life dot
 	if life_dots.size() > 0 and life_dots[0].visible:
-		var dot_pulse = create_tween().set_loops()
-		dot_pulse.tween_property(life_dots[0], "modulate", Color(1, 0.3, 0.3, 1), 0.4)
-		dot_pulse.tween_property(life_dots[0], "modulate", Color(1, 1, 1, 1), 0.4)
+		if slow_mo_life_dot_tween and slow_mo_life_dot_tween.is_valid():
+			slow_mo_life_dot_tween.kill()
+		slow_mo_life_dot_tween = create_tween().set_loops()
+		slow_mo_life_dot_tween.tween_property(life_dots[0], "modulate", Color(1, 0.3, 0.3, 1), 0.4)
+		slow_mo_life_dot_tween.tween_property(life_dots[0], "modulate", Color(1, 1, 1, 1), 0.4)
 
 func _start_slow_mo_warning_flash():
 	# Flash the screen border to warn slow-mo is ending
@@ -1227,6 +1947,15 @@ func _end_slow_mo():
 		return
 	slow_mo_active = false
 	slow_mo_timer = 0.0
+
+	if slow_mo_vignette_tween and slow_mo_vignette_tween.is_valid():
+		slow_mo_vignette_tween.kill()
+	slow_mo_vignette_tween = null
+	if slow_mo_life_dot_tween and slow_mo_life_dot_tween.is_valid():
+		slow_mo_life_dot_tween.kill()
+	slow_mo_life_dot_tween = null
+	if life_dots.size() > 0:
+		life_dots[0].modulate = Color(1, 1, 1, 1)
 
 	var t = create_tween()
 	t.tween_property(Engine, "time_scale", 1.0, 0.3).set_ease(Tween.EASE_OUT)
@@ -1268,7 +1997,8 @@ func _spawn_miss_indicator():
 
 func _flash_screen(color: Color):
 	var flash = ColorRect.new()
-	flash.color = color
+	var a = clamp(color.a * fx_flash_scale, 0.0, 0.45)
+	flash.color = Color(color.r, color.g, color.b, a)
 	flash.anchors_preset = Control.PRESET_FULL_RECT
 	flash.anchor_right = 1.0
 	flash.anchor_bottom = 1.0
@@ -1309,7 +2039,7 @@ func _stop_inversion_warning():
 func _on_bomb_exploded():
 	if camera:
 		camera.big_shake()
-	Input.vibrate_handheld(150)
+	_vibrate(150)
 	_play_sfx(snd_miss, -2.0, 0.5)
 	_flash_screen(Color(1, 0.3, 0, 0.35))
 	_duck_music(-16.0, 0.25)
@@ -1322,6 +2052,8 @@ func _on_pause_pressed():
 		pause_menu.show_pause()
 
 func _game_over():
+	if game_over:
+		return
 	game_over = true
 	spawn_timer.stop()
 
@@ -1355,8 +2087,8 @@ func _update_ui():
 		_animate_label(score_label)
 
 	if combo_label:
-		if combo > 1:
-			combo_label.text = "x" + str(combo)
+		if combo > 3:
+			combo_label.text = "CHAIN x" + str(combo)
 			combo_label.visible = true
 			if combo >= 10:
 				combo_label.add_theme_color_override("font_color", Color(1, 1, 0, 1))
@@ -1385,6 +2117,18 @@ func _spawn_direction_hint(ball: BallDragThrow):
 	var hint = Label.new()
 	hint.add_theme_font_size_override("font_size", 20)
 	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	if super_active or ball.universal_wall_match:
+		hint.text = "ANY"
+		hint.add_theme_color_override("font_color", Color(1, 0.95, 0.35, 0.55))
+		hint.position = ball.position + Vector2(-24, -65)
+		add_child(hint)
+
+		var t_super = create_tween()
+		t_super.tween_property(hint, "position:y", hint.position.y - 35, 0.4).set_ease(Tween.EASE_OUT)
+		t_super.parallel().tween_property(hint, "modulate:a", 0.0, 0.4)
+		t_super.tween_callback(hint.queue_free)
+		return
 
 	var cyan_right = not walls_inverted
 	match ball.ball_type:

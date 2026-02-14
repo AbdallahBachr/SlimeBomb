@@ -107,7 +107,10 @@ func _animate_entrance(is_new_best: bool):
 
 	# Stats row: time + accuracy
 	var vbox = $Panel/VBoxContainer
+	if vbox.has_node("StatsRow"):
+		vbox.get_node("StatsRow").queue_free()
 	var stats_container = HBoxContainer.new()
+	stats_container.name = "StatsRow"
 	stats_container.alignment = BoxContainer.ALIGNMENT_CENTER
 	stats_container.add_theme_constant_override("separation", 40)
 	vbox.add_child(stats_container)
@@ -138,6 +141,22 @@ func _animate_entrance(is_new_best: bool):
 	stats_container.modulate.a = 0.0
 	var st = create_tween()
 	st.tween_property(stats_container, "modulate:a", 1.0, 0.4).set_delay(0.2)
+
+	if vbox.has_node("RankLabel"):
+		vbox.get_node("RankLabel").queue_free()
+	var rank_label = Label.new()
+	rank_label.name = "RankLabel"
+	rank_label.text = _build_rank_text()
+	rank_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rank_label.add_theme_font_size_override("font_size", 22)
+	rank_label.add_theme_color_override("font_color", _get_rank_color(rank_label.text))
+	rank_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(rank_label)
+	vbox.move_child(rank_label, stats_container.get_index() + 1)
+
+	rank_label.modulate.a = 0.0
+	var rt = create_tween()
+	rt.tween_property(rank_label, "modulate:a", 1.0, 0.45).set_delay(0.35)
 
 func _load_high_score():
 	if FileAccess.file_exists("user://highscore.save"):
@@ -170,3 +189,35 @@ func _play_ui():
 	add_child(p)
 	p.play()
 	p.finished.connect(p.queue_free)
+
+func _build_rank_text() -> String:
+	var sec_parts = time_survived.split(":")
+	var total_seconds = 0
+	if sec_parts.size() == 2:
+		total_seconds = int(sec_parts[0]) * 60 + int(sec_parts[1])
+
+	var perf = float(current_score) * 0.0012 + float(max_combo) * 1.8 + accuracy_pct * 0.55 + float(total_seconds) * 0.04
+	if perf >= 360.0:
+		return "RANK S+  |  LEGENDARY RUN"
+	if perf >= 280.0:
+		return "RANK S  |  ELITE CONTROL"
+	if perf >= 210.0:
+		return "RANK A  |  SHARP PLAY"
+	if perf >= 145.0:
+		return "RANK B  |  SOLID RUN"
+	if perf >= 95.0:
+		return "RANK C  |  KEEP PUSHING"
+	return "RANK D  |  WARMUP"
+
+func _get_rank_color(rank_text: String) -> Color:
+	if rank_text.begins_with("RANK S+"):
+		return Color(1.0, 0.95, 0.35, 1.0)
+	if rank_text.begins_with("RANK S"):
+		return Color(0.4, 1.0, 1.0, 1.0)
+	if rank_text.begins_with("RANK A"):
+		return Color(0.6, 1.0, 0.7, 0.95)
+	if rank_text.begins_with("RANK B"):
+		return Color(1.0, 1.0, 1.0, 0.9)
+	if rank_text.begins_with("RANK C"):
+		return Color(1.0, 0.75, 0.45, 0.9)
+	return Color(1.0, 0.45, 0.45, 0.9)

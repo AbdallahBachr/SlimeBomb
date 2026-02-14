@@ -2,6 +2,10 @@ extends RigidBody2D
 class_name BallDragThrow
 
 enum BallType { CYAN, MAGENTA, YELLOW, BOMB }
+const LAYER_CYAN: int = 2
+const LAYER_MAGENTA: int = 3
+const LAYER_YELLOW: int = 4
+const LAYER_BOMB: int = 5
 
 @export var ball_type: BallType = BallType.CYAN
 @export var throw_speed: float = 1800.0
@@ -13,6 +17,10 @@ var miss_emitted: bool = false
 var is_releasing: bool = false
 var super_mode: bool = false
 var auto_directed: bool = false
+var universal_wall_match: bool = false
+var super_visuals_active: bool = false
+var super_anim_scale: float = 1.0
+var vibration_scale: float = 1.0
 
 # Throw tracking
 var mouse_positions: Array[Vector2] = []
@@ -59,9 +67,12 @@ signal bomb_exploded()
 
 func _ready():
 	spawn_time = Time.get_ticks_msec() / 1000.0
+	_configure_local_profile()
 	snd_grab = load("res://assets/sounds/blue_wall.mp3")
 	snd_throw = load("res://assets/sounds/red_wall.mp3")
+	continuous_cd = RigidBody2D.CCD_MODE_CAST_SHAPE
 
+	_setup_collision_rules()
 	_setup_visuals()
 	_setup_trail()
 
@@ -69,6 +80,25 @@ func _ready():
 
 	rotation = randf_range(0, TAU)
 	angular_velocity = randf_range(-1.5, 1.5)
+
+func _setup_collision_rules():
+	collision_layer = 0
+	collision_mask = 0
+
+	match ball_type:
+		BallType.CYAN:
+			set_collision_layer_value(LAYER_CYAN, true)
+			set_collision_mask_value(LAYER_YELLOW, true)
+		BallType.MAGENTA:
+			set_collision_layer_value(LAYER_MAGENTA, true)
+			set_collision_mask_value(LAYER_YELLOW, true)
+		BallType.YELLOW:
+			set_collision_layer_value(LAYER_YELLOW, true)
+			set_collision_mask_value(LAYER_CYAN, true)
+			set_collision_mask_value(LAYER_MAGENTA, true)
+		BallType.BOMB:
+			# Bombs should not push other balls
+			set_collision_layer_value(LAYER_BOMB, true)
 
 func _setup_visuals():
 	var sprite = $Sprite2D if has_node("Sprite2D") else null
@@ -251,6 +281,33 @@ func _play_sfx(stream: AudioStream, volume_db: float = 0.0, pitch: float = 1.0):
 	player.play()
 	player.finished.connect(player.queue_free)
 
+func _configure_local_profile():
+	var quality := 2
+	var gs = get_node_or_null("/root/GlobalSettings")
+	if gs:
+		quality = int(clamp(float(gs.get("particle_quality")), 0.0, 2.0))
+
+	match quality:
+		0:
+			super_anim_scale = 0.72
+		1:
+			super_anim_scale = 0.86
+		_:
+			super_anim_scale = 1.0
+
+	vibration_scale = 1.0
+	if OS.has_feature("mobile"):
+		super_anim_scale *= 0.92
+		vibration_scale = 0.90
+
+func _vibrate(duration_ms: int):
+	var d = int(round(float(duration_ms) * vibration_scale))
+	var gs = get_node_or_null("/root/GlobalSettings")
+	if gs and gs.has_method("vibrate"):
+		gs.vibrate(d)
+	elif OS.has_feature("mobile"):
+		Input.vibrate_handheld(d)
+
 func _grab():
 	if is_thrown:
 		return
@@ -270,7 +327,7 @@ func _grab():
 	grab_offset = global_position - pointer_pos
 
 	_play_sfx(snd_grab, -18.0, 1.5)
-	Input.vibrate_handheld(12)
+	_vibrate(12)
 
 	var tween = create_tween()
 	tween.tween_property(self, "scale", Vector2(1.15, 1.15), 0.08)
@@ -296,36 +353,58 @@ func _release():
 	is_grabbed = false
 	is_thrown = true
 	is_releasing = true
-	freeze = false
-	collision_layer = pre_grab_collision_layer
-	collision_mask = pre_grab_collision_mask
 	throw_time = Time.get_ticks_msec() / 1000.0
 
 	var throw_vel = _calculate_throw_velocity()
 	var min_throw = throw_speed_min * 0.6
 	if throw_vel.length() < min_throw or abs(throw_vel.x) < 120.0:
 		# Cancel throw if too short (prevents double-click vanish)
-		is_thrown = false
-		is_releasing = false
-		gravity_scale = pre_grab_gravity
-		linear_velocity = Vector2.ZERO
+		_cancel_release()
 		return
 
 	var speed_ratio = throw_vel.length() / (throw_speed * 2.0)
 	_play_sfx(snd_throw, -14.0, 0.8 + speed_ratio * 0.6)
 	_boost_trail_for_speed(speed_ratio)
-	Input.vibrate_handheld(20)
+	_vibrate(20)
 
-	_check_throw_direction(throw_vel)
+	if not _check_throw_direction(throw_vel):
+		is_releasing = false
+		return
 
+	freeze = false
+	sleeping = false
+	collision_layer = pre_grab_collision_layer
+	collision_mask = pre_grab_collision_mask
 	linear_velocity = throw_vel
 	gravity_scale = 0.0
+	is_releasing = false
 
 	var tween = create_tween()
 	tween.tween_property(self, "scale", Vector2(1.0, 1.0), 0.08)
 
 	trail_fade_timer = TRAIL_FADE_DURATION
+
+func _cancel_release():
+	is_thrown = false
 	is_releasing = false
+	freeze = false
+	collision_layer = pre_grab_collision_layer
+	collision_mask = pre_grab_collision_mask
+	gravity_scale = pre_grab_gravity
+	linear_velocity = Vector2.ZERO
+
+	trail_points.clear()
+	trail_fade_timer = 0.0
+	var tween = create_tween()
+	tween.tween_property(self, "scale", Vector2(1.0, 1.0), 0.08)
+	if trail_line:
+		trail_line.visible = false
+		trail_line.modulate.a = 1.0
+		trail_line.clear_points()
+	if trail_glow:
+		trail_glow.visible = false
+		trail_glow.modulate.a = 1.0
+		trail_glow.clear_points()
 
 func _calculate_throw_velocity() -> Vector2:
 	if mouse_positions.size() < 2:
@@ -349,13 +428,18 @@ func _calculate_throw_velocity() -> Vector2:
 		return direction.normalized() * speed
 	return Vector2.ZERO
 
-func _check_throw_direction(velocity: Vector2):
+func _check_throw_direction(velocity: Vector2) -> bool:
 	var dir_x = velocity.x
 
 	if ball_type == BallType.BOMB:
 		bomb_exploded.emit()
 		_explode()
-		return
+		return false
+
+	# Mega bonus: every ball can match every wall, independent of side/inversion
+	if universal_wall_match:
+		ball_scored.emit(10)
+		return true
 
 	var is_right = dir_x > 50
 	var is_left = dir_x < -50
@@ -379,9 +463,11 @@ func _check_throw_direction(velocity: Vector2):
 
 	if correct:
 		ball_scored.emit(10)
+		return true
 	else:
 		_emit_miss()
 		_discard_wrong_throw()
+		return false
 
 func _emit_miss():
 	if miss_emitted:
@@ -433,6 +519,10 @@ func _process(delta):
 
 	if super_mode and ball_type != BallType.BOMB:
 		_animate_super_colors()
+		super_visuals_active = true
+	elif super_visuals_active:
+		_clear_super_visuals()
+		super_visuals_active = false
 
 func _update_trail():
 	if not trail_line:
@@ -453,14 +543,34 @@ func _update_trail():
 			trail_glow.add_point(point)
 
 func _animate_super_colors():
+	var t = Time.get_ticks_msec() / 1000.0
+	var phase = float(get_instance_id()) * 0.013
+
 	if has_node("Sprite2D"):
 		var sprite = $Sprite2D
-		var h = fmod(Time.get_ticks_msec() / 1000.0 + float(get_instance_id()) * 0.001, 1.0)
-		sprite.self_modulate = Color.from_hsv(h, 0.9, 1.0)
+		var h = fmod(t * 0.32 + phase, 1.0)
+		var sat = clamp(0.72 + 0.20 * sin(t * 4.8 + phase), 0.0, 1.0)
+		var val = clamp(0.92 + 0.08 * sin(t * 7.1 + phase * 1.7), 0.0, 1.0)
+		sprite.self_modulate = Color.from_hsv(h, sat, val)
+		var pulse = 1.0 + (0.10 * super_anim_scale) * sin(t * 6.4 + phase) + (0.04 * super_anim_scale) * sin(t * 12.8 + phase * 0.7)
+		sprite.scale = Vector2(pulse, pulse)
 	if has_node("Glow"):
 		var glow = $Glow
-		var h2 = fmod(Time.get_ticks_msec() / 1000.0 + float(get_instance_id()) * 0.001 + 0.2, 1.0)
-		glow.self_modulate = Color.from_hsv(h2, 0.8, 1.0, 0.6)
+		var h2 = fmod(t * 0.36 + phase + 0.15 + 0.03 * sin(t * 2.1 + phase), 1.0)
+		var glow_alpha = clamp(0.55 + (0.18 * super_anim_scale) * sin(t * 8.2 + phase * 1.2), 0.35, 0.9)
+		glow.self_modulate = Color.from_hsv(h2, 0.84, 1.0, glow_alpha)
+		var pulse2 = 1.15 + (0.10 * super_anim_scale) * sin(t * 6.9 + phase + 0.2) + (0.05 * super_anim_scale) * sin(t * 13.7 + phase * 1.4)
+		glow.scale = Vector2(pulse2, pulse2)
+
+func _clear_super_visuals():
+	if has_node("Sprite2D"):
+		var sprite = $Sprite2D
+		sprite.self_modulate = Color.WHITE
+		sprite.scale = Vector2.ONE
+	if has_node("Glow"):
+		var glow = $Glow
+		glow.self_modulate = Color(1, 1, 1, 1)
+		glow.scale = Vector2(1.0, 1.0)
 
 func _boost_trail_for_speed(speed_ratio: float):
 	if not trail_line:
@@ -481,7 +591,11 @@ func _get_pointer_world_pos() -> Vector2:
 func _check_out_of_bounds():
 	var view = get_viewport_rect().size
 	var margin = 240.0
-	if global_position.y > view.y + margin or global_position.x < -margin or global_position.x > view.x + margin:
+	if global_position.y > view.y + margin:
+		if ball_type != BallType.BOMB:
+			_emit_miss()
+		queue_free()
+	elif global_position.x < -margin or global_position.x > view.x + margin:
 		if ball_type != BallType.BOMB:
 			_emit_miss()
 		queue_free()
@@ -489,14 +603,17 @@ func _check_out_of_bounds():
 func _discard_wrong_throw():
 	collision_layer = 0
 	collision_mask = 0
-	linear_velocity = Vector2.ZERO
+	freeze = false
+	gravity_scale = 0.8
+	linear_velocity = Vector2(0, 900)
 
 	if has_node("Sprite2D"):
 		var sprite = $Sprite2D
 		var tween = create_tween()
 		tween.set_parallel(true)
-		tween.tween_property(sprite, "modulate", Color(1, 0.2, 0.2, 0), 0.18)
-		tween.tween_property(sprite, "scale", Vector2(0.4, 0.4), 0.18)
+		tween.tween_property(sprite, "modulate", Color(1, 0.2, 0.2, 0), 0.22)
+		tween.tween_property(sprite, "scale", Vector2(0.4, 0.4), 0.22)
+		tween.tween_property(self, "global_position:y", global_position.y + 160, 0.22)
 		tween.tween_callback(queue_free)
 	else:
 		queue_free()

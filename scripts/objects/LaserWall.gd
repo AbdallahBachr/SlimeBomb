@@ -12,11 +12,25 @@ var wall_sound: AudioStream
 var particle_sound: AudioStream
 var wrong_sound: AudioStream
 
+var fx_particle_scale: float = 1.0
+var fx_use_white_layer: bool = true
+var star_textures: Array[Texture2D] = []
+
 signal ball_destroyed(points: int, ball: BallDragThrow)
 signal wrong_wall_hit()
 
 func _ready():
+	_configure_fx_profile()
 	original_type = wall_type
+	monitoring = true
+	monitorable = true
+	collision_layer = 1
+	collision_mask = 0
+	set_collision_mask_value(1, true) # powerups
+	set_collision_mask_value(2, true) # cyan balls
+	set_collision_mask_value(3, true) # magenta balls
+	set_collision_mask_value(4, true) # yellow balls
+	set_collision_mask_value(5, true) # bombs
 
 	if wall_type == WallType.CYAN:
 		wall_sound = load("res://assets/sounds/blue_wall.mp3")
@@ -24,9 +38,34 @@ func _ready():
 		wall_sound = load("res://assets/sounds/red_wall.mp3")
 	particle_sound = load("res://assets/sounds/particles_short.mp3")
 	wrong_sound = load("res://assets/sounds/red_wall.mp3")
+	star_textures = [
+		load("res://assets/particles/star4.svg"),
+		load("res://assets/particles/star6.svg"),
+		load("res://assets/particles/cross_diamond.svg"),
+	]
 
 	body_entered.connect(_on_body_entered)
 	_setup_visuals()
+
+func _configure_fx_profile():
+	var quality := 2
+	var gs = get_node_or_null("/root/GlobalSettings")
+	if gs:
+		quality = int(clamp(float(gs.get("particle_quality")), 0.0, 2.0))
+
+	match quality:
+		0:
+			fx_particle_scale = 0.56
+			fx_use_white_layer = false
+		1:
+			fx_particle_scale = 0.76
+			fx_use_white_layer = true
+		_:
+			fx_particle_scale = 1.0
+			fx_use_white_layer = true
+
+	if OS.has_feature("mobile"):
+		fx_particle_scale *= 0.88
 
 func set_inverted(inverted: bool):
 	is_inverted = inverted
@@ -58,14 +97,15 @@ func _on_body_entered(body):
 	if body is BallDragThrow:
 		var ball = body as BallDragThrow
 
-		var match_found = false
+		var match_found = ball.universal_wall_match
 
-		if wall_type == WallType.CYAN and ball.ball_type == BallDragThrow.BallType.CYAN:
-			match_found = true
-		elif wall_type == WallType.MAGENTA and ball.ball_type == BallDragThrow.BallType.MAGENTA:
-			match_found = true
-		elif ball.ball_type == BallDragThrow.BallType.YELLOW:
-			match_found = true
+		if not match_found:
+			if wall_type == WallType.CYAN and ball.ball_type == BallDragThrow.BallType.CYAN:
+				match_found = true
+			elif wall_type == WallType.MAGENTA and ball.ball_type == BallDragThrow.BallType.MAGENTA:
+				match_found = true
+			elif ball.ball_type == BallDragThrow.BallType.YELLOW:
+				match_found = true
 
 		if match_found:
 			if ball.has_method("hit_flash"):
@@ -101,21 +141,16 @@ func _play_destruction_effect(ball: BallDragThrow):
 		BallDragThrow.BallType.YELLOW:
 			ball_color = Color(1, 1, 0, 1)
 
-	var star_textures = [
-		load("res://assets/particles/star4.svg"),
-		load("res://assets/particles/star6.svg"),
-		load("res://assets/particles/cross_diamond.svg"),
-	]
-
 	for i in range(star_textures.size()):
 		var p = _create_explosion_emitter(ball_pos, dir_x, ball_color, star_textures[i])
 		get_parent().add_child(p)
 		p.emitting = true
 
-	for i in range(star_textures.size()):
-		var p = _create_explosion_emitter(ball_pos, dir_x, Color(1, 1, 1, 1), star_textures[i])
-		get_parent().add_child(p)
-		p.emitting = true
+	if fx_use_white_layer:
+		for i in range(star_textures.size()):
+			var p = _create_explosion_emitter(ball_pos, dir_x, Color(1, 1, 1, 1), star_textures[i])
+			get_parent().add_child(p)
+			p.emitting = true
 
 func _play_sound(stream: AudioStream, pos: Vector2, volume_db: float = 0.0):
 	var player = AudioStreamPlayer2D.new()
@@ -131,7 +166,7 @@ func _create_explosion_emitter(pos: Vector2, dir_x: float, color: Color, tex: Te
 	var particles = GPUParticles2D.new()
 	particles.position = pos
 	particles.emitting = false
-	particles.amount = 8
+	particles.amount = int(max(4.0, round(8.0 * fx_particle_scale)))
 	particles.lifetime = 0.9
 	particles.one_shot = true
 	particles.explosiveness = 1.0
@@ -140,8 +175,8 @@ func _create_explosion_emitter(pos: Vector2, dir_x: float, color: Color, tex: Te
 	var mat = ParticleProcessMaterial.new()
 	mat.direction = Vector3(dir_x, 0, 0)
 	mat.spread = 70.0
-	mat.initial_velocity_min = 250.0
-	mat.initial_velocity_max = 500.0
+	mat.initial_velocity_min = lerp(190.0, 250.0, fx_particle_scale)
+	mat.initial_velocity_max = lerp(360.0, 500.0, fx_particle_scale)
 	mat.gravity = Vector3(0, 250, 0)
 	mat.scale_min = 0.6
 	mat.scale_max = 1.5

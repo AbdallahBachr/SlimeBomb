@@ -20,13 +20,13 @@ Des balles tombent du haut de l'ecran :
 # Ou double-cliquer sur project.godot
 ```
 
-### 2. Configurer GlobalSettings (Important)
+### 2. GlobalSettings (Autoload)
 
-1. Aller dans Project > Project Settings > Autoload
-2. Cliquer sur Add
-3. Path: `res://scripts/GlobalSettings.gd`
-4. Node Name: `GlobalSettings`
-5. Cliquer Add
+`GlobalSettings` est deja configure dans `project.godot`.
+
+Si tu ne le vois pas dans `Project > Project Settings > Autoload`, ajoute:
+- Path: `res://scripts/GlobalSettings.gd`
+- Node Name: `GlobalSettings`
 
 ### 3. Lancer le jeu
 
