@@ -14,6 +14,7 @@ const LAYER_BOMB: int = 5
 var is_grabbed: bool = false
 var is_thrown: bool = false
 var miss_emitted: bool = false
+var resolved_on_wall: bool = false
 var is_releasing: bool = false
 var super_mode: bool = false
 var auto_directed: bool = false
@@ -25,7 +26,18 @@ var vibration_scale: float = 1.0
 # Throw tracking
 var mouse_positions: Array[Vector2] = []
 var mouse_times: Array[float] = []
-const MOUSE_HISTORY_DURATION: float = 0.1
+const THROW_HISTORY_DURATION_MOUSE: float = 0.105
+const THROW_HISTORY_DURATION_TOUCH: float = 0.070
+const DRAG_FOLLOW_LERP_MOUSE: float = 0.86
+const DRAG_FOLLOW_LERP_TOUCH: float = 1.0
+const RELEASE_NUDGE_PIXELS_MIN: float = 10.0
+const RELEASE_NUDGE_PIXELS_MAX: float = 26.0
+const THROW_TOUCH_SPEED_BOOST: float = 1.12
+const THROW_SAMPLE_MIN_DIST_MOUSE: float = 1.2
+const THROW_SAMPLE_MIN_DIST_TOUCH: float = 3.0
+var has_last_throw_sample: bool = false
+var last_throw_sample_pos: Vector2 = Vector2.ZERO
+var release_requested: bool = false
 
 # Trail effect - multi-layer neon
 var trail_line: Line2D = null
@@ -56,6 +68,10 @@ var pre_grab_gravity: float = 0.0
 # Timing
 var spawn_time: float = 0.0
 var throw_time: float = -1.0
+var haptic_cooldown: float = 0.0
+const HAPTIC_COOLDOWN_TIME: float = 0.045
+const HAPTIC_MIN_MS: int = 6
+const HAPTIC_MAX_MS: int = 42
 
 # Preloaded sounds
 var snd_grab: AudioStream
@@ -71,6 +87,7 @@ func _ready():
 	snd_grab = load("res://assets/sounds/blue_wall.mp3")
 	snd_throw = load("res://assets/sounds/red_wall.mp3")
 	continuous_cd = RigidBody2D.CCD_MODE_CAST_SHAPE
+	can_sleep = false
 
 	_setup_collision_rules()
 	_setup_visuals()
@@ -252,24 +269,27 @@ func _on_input_event(_viewport: Viewport, event: InputEvent, _shape_idx: int):
 func _input(event):
 	if is_grabbed and event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
-			_release()
+			release_requested = true
 	elif is_grabbed and event is InputEventMouseMotion:
 		last_screen_pos = event.position
 		last_input_pos = _screen_to_world(event.position)
 		has_input_pos = true
 		last_input_is_touch = false
+		_push_throw_sample(last_input_pos)
 	elif is_grabbed and event is InputEventScreenTouch:
 		last_screen_pos = event.position
 		last_input_pos = _screen_to_world(event.position)
 		has_input_pos = true
 		last_input_is_touch = true
+		_push_throw_sample(last_input_pos)
 		if not event.pressed:
-			_release()
+			release_requested = true
 	elif is_grabbed and event is InputEventScreenDrag:
 		last_screen_pos = event.position
 		last_input_pos = _screen_to_world(event.position)
 		has_input_pos = true
 		last_input_is_touch = true
+		_push_throw_sample(last_input_pos)
 
 func _play_sfx(stream: AudioStream, volume_db: float = 0.0, pitch: float = 1.0):
 	var player = AudioStreamPlayer.new()
@@ -302,18 +322,32 @@ func _configure_local_profile():
 
 func _vibrate(duration_ms: int):
 	var d = int(round(float(duration_ms) * vibration_scale))
+	d = int(clamp(d, float(HAPTIC_MIN_MS), float(HAPTIC_MAX_MS)))
+	if haptic_cooldown > 0.0:
+		return
+	haptic_cooldown = HAPTIC_COOLDOWN_TIME
 	var gs = get_node_or_null("/root/GlobalSettings")
 	if gs and gs.has_method("vibrate"):
 		gs.vibrate(d)
 	elif OS.has_feature("mobile"):
 		Input.vibrate_handheld(d)
 
+func _get_drag_follow_lerp() -> float:
+	return DRAG_FOLLOW_LERP_TOUCH if last_input_is_touch else DRAG_FOLLOW_LERP_MOUSE
+
+func _get_throw_history_window() -> float:
+	return THROW_HISTORY_DURATION_TOUCH if last_input_is_touch else THROW_HISTORY_DURATION_MOUSE
+
+func _get_throw_sample_min_dist() -> float:
+	return THROW_SAMPLE_MIN_DIST_TOUCH if last_input_is_touch else THROW_SAMPLE_MIN_DIST_MOUSE
+
 func _grab():
 	if is_thrown:
 		return
 
 	is_grabbed = true
-	freeze = true
+	freeze = false
+	sleeping = false
 	pre_grab_collision_layer = collision_layer
 	pre_grab_collision_mask = collision_mask
 	pre_grab_gravity = gravity_scale
@@ -325,6 +359,9 @@ func _grab():
 
 	var pointer_pos = _get_pointer_world_pos()
 	grab_offset = global_position - pointer_pos
+	if last_input_is_touch:
+		# For touch controls, lock the ball to finger center for direct feel.
+		grab_offset = Vector2.ZERO
 
 	_play_sfx(snd_grab, -18.0, 1.5)
 	_vibrate(12)
@@ -334,6 +371,8 @@ func _grab():
 
 	mouse_positions.clear()
 	mouse_times.clear()
+	has_last_throw_sample = false
+	release_requested = false
 	trail_points.clear()
 	trail_fade_timer = 0.0
 
@@ -345,10 +384,16 @@ func _grab():
 		trail_glow.visible = true
 		trail_glow.modulate.a = 1.0
 		trail_glow.clear_points()
+	_push_throw_sample(global_position)
 
 func _release():
 	if not is_grabbed:
+		release_requested = false
 		return
+
+	var pointer_now = _get_pointer_world_pos() + grab_offset
+	global_position = pointer_now
+	_push_throw_sample(pointer_now)
 
 	is_grabbed = false
 	is_thrown = true
@@ -363,9 +408,6 @@ func _release():
 		return
 
 	var speed_ratio = throw_vel.length() / (throw_speed * 2.0)
-	_play_sfx(snd_throw, -14.0, 0.8 + speed_ratio * 0.6)
-	_boost_trail_for_speed(speed_ratio)
-	_vibrate(20)
 
 	if not _check_throw_direction(throw_vel):
 		is_releasing = false
@@ -378,6 +420,14 @@ func _release():
 	linear_velocity = throw_vel
 	gravity_scale = 0.0
 	is_releasing = false
+	if throw_vel.length() > 0.0:
+		var release_nudge = clamp(throw_vel.length() * 0.012, RELEASE_NUDGE_PIXELS_MIN, RELEASE_NUDGE_PIXELS_MAX)
+		global_position += throw_vel.normalized() * release_nudge
+	release_requested = false
+
+	_play_sfx(snd_throw, -14.0, 0.8 + speed_ratio * 0.6)
+	_boost_trail_for_speed(speed_ratio)
+	_vibrate(20)
 
 	var tween = create_tween()
 	tween.tween_property(self, "scale", Vector2(1.0, 1.0), 0.08)
@@ -387,6 +437,7 @@ func _release():
 func _cancel_release():
 	is_thrown = false
 	is_releasing = false
+	release_requested = false
 	freeze = false
 	collision_layer = pre_grab_collision_layer
 	collision_mask = pre_grab_collision_mask
@@ -410,23 +461,43 @@ func _calculate_throw_velocity() -> Vector2:
 	if mouse_positions.size() < 2:
 		return Vector2.ZERO
 
-	var oldest_pos = mouse_positions[0]
-	var newest_pos = mouse_positions[mouse_positions.size() - 1]
-	var oldest_time = mouse_times[0]
-	var newest_time = mouse_times[mouse_times.size() - 1]
-
-	var dt = newest_time - oldest_time
-	if dt < 0.001:
+	var dt_full = mouse_times[mouse_times.size() - 1] - mouse_times[0]
+	if dt_full <= 0.0006:
 		return Vector2.ZERO
 
-	var direction = (newest_pos - oldest_pos)
-	var speed = direction.length() / dt
+	var weighted_velocity = Vector2.ZERO
+	var total_weight = 0.0
+	for i in range(1, mouse_positions.size()):
+		var dt = mouse_times[i] - mouse_times[i - 1]
+		if dt <= 0.0006:
+			continue
+		var segment_velocity = (mouse_positions[i] - mouse_positions[i - 1]) / dt
+		var weight = 0.35 + float(i) / float(mouse_positions.size() - 1)
+		weighted_velocity += segment_velocity * weight
+		total_weight += weight
+	if total_weight <= 0.0:
+		return Vector2.ZERO
 
-	speed = clamp(speed, throw_speed_min, throw_speed * 2.0)
-
-	if direction.length() > 0:
-		return direction.normalized() * speed
+	var velocity = weighted_velocity / total_weight
+	if last_input_is_touch:
+		velocity *= THROW_TOUCH_SPEED_BOOST
+	var speed = clamp(velocity.length(), throw_speed_min, throw_speed * 2.0)
+	if velocity.length() > 0.0:
+		return velocity.normalized() * speed
 	return Vector2.ZERO
+
+func _push_throw_sample(sample_pos: Vector2):
+	if has_last_throw_sample and sample_pos.distance_to(last_throw_sample_pos) < _get_throw_sample_min_dist():
+		return
+	var now = Time.get_ticks_msec() / 1000.0
+	mouse_positions.append(sample_pos)
+	mouse_times.append(now)
+	last_throw_sample_pos = sample_pos
+	has_last_throw_sample = true
+	var history_window = _get_throw_history_window()
+	while mouse_times.size() > 0 and (now - mouse_times[0]) > history_window:
+		mouse_positions.pop_front()
+		mouse_times.pop_front()
 
 func _check_throw_direction(velocity: Vector2) -> bool:
 	var dir_x = velocity.x
@@ -470,7 +541,7 @@ func _check_throw_direction(velocity: Vector2) -> bool:
 		return false
 
 func _emit_miss():
-	if miss_emitted:
+	if miss_emitted or resolved_on_wall:
 		return
 	miss_emitted = true
 	ball_missed.emit()
@@ -478,31 +549,43 @@ func _emit_miss():
 func mark_missed():
 	_emit_miss()
 
+func mark_resolved_by_wall():
+	resolved_on_wall = true
+	miss_emitted = true
+	is_thrown = false
+	is_releasing = false
+	collision_layer = 0
+	collision_mask = 0
+
+func _physics_process(_delta):
+	if is_grabbed:
+		if release_requested:
+			_release()
+			_update_trail()
+			return
+		var target_pos = _get_pointer_world_pos() + grab_offset
+		global_position = global_position.lerp(target_pos, _get_drag_follow_lerp())
+		linear_velocity = Vector2.ZERO
+		angular_velocity = 0.0
+		_push_throw_sample(target_pos)
+	elif is_thrown:
+		_check_out_of_bounds()
+	else:
+		release_requested = false
+
+	if is_grabbed or is_thrown:
+		_update_trail()
+
 func _process(delta):
-	var now = Time.get_ticks_msec() / 1000.0
+	if haptic_cooldown > 0.0:
+		haptic_cooldown = max(0.0, haptic_cooldown - delta)
 
 	if has_accel_pattern and not is_grabbed and not is_thrown:
 		accel_timer += delta
 		var wave = sin(accel_timer * 3.0)
 		gravity_scale = base_gravity * (1.0 + wave * 0.7)
 
-	if is_grabbed:
-		var target_pos = _get_pointer_world_pos()
-		target_pos += grab_offset
-		global_position = global_position.lerp(target_pos, 0.4)
-
-		mouse_positions.append(target_pos)
-		mouse_times.append(now)
-
-		while mouse_times.size() > 0 and (now - mouse_times[0]) > MOUSE_HISTORY_DURATION:
-			mouse_positions.pop_front()
-			mouse_times.pop_front()
-
-		_update_trail()
-
-	elif is_thrown:
-		_update_trail()
-
+	if is_thrown:
 		if trail_fade_timer > 0:
 			trail_fade_timer -= delta
 			var alpha = trail_fade_timer / TRAIL_FADE_DURATION
@@ -514,8 +597,6 @@ func _process(delta):
 			trail_line.visible = false
 			if trail_glow:
 				trail_glow.visible = false
-
-		_check_out_of_bounds()
 
 	if super_mode and ball_type != BallType.BOMB:
 		_animate_super_colors()
@@ -589,6 +670,8 @@ func _get_pointer_world_pos() -> Vector2:
 	return get_global_mouse_position()
 
 func _check_out_of_bounds():
+	if resolved_on_wall:
+		return
 	var view = get_viewport_rect().size
 	var margin = 240.0
 	if global_position.y > view.y + margin:

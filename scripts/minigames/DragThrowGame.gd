@@ -56,6 +56,10 @@ var tutorial_shown: bool = false
 var quick_tip: Label = null
 var recent_combo_flash: bool = false
 var wrong_wall_streak: int = 0
+var last_spawn_x: float = 540.0
+var last_spawned_type: int = -1
+var haptic_cooldown_timer: float = 0.0
+const HAPTIC_COOLDOWN_MOBILE: float = 0.05
 
 # Adaptive flow director (keeps tension high without unfair spikes)
 var adaptive_flow_score: float = 0.5
@@ -70,6 +74,49 @@ var bomb_pause_timer: float = 0.0
 const BOMB_PAUSE_ON_MISS: float = 5.0
 var recent_hit_window: int = 0
 var recent_miss_window: int = 0
+var clutch_window_timer: float = 0.0
+const CLUTCH_RECOVERY_WINDOW: float = 2.2
+const CLUTCH_BONUS_MIN: int = 22
+const CLUTCH_BONUS_MAX: int = 48
+const CLUTCH_LAST_LIFE_EXTRA: int = 22
+var clutch_window_duration: float = CLUTCH_RECOVERY_WINDOW
+const NEAR_MISS_MIN_THROW_TIME: float = 0.78
+const NEAR_MISS_Y_RATIO: float = 0.72
+const NEAR_MISS_DEEP_Y_RATIO: float = 0.84
+
+# Combo saver (soft forgiveness loop)
+var combo_saver_charges: int = 0
+var combo_saver_hits: int = 0
+const COMBO_SAVER_HITS_PER_CHARGE: int = 9
+const COMBO_SAVER_MAX_CHARGES: int = 1
+const COMBO_SAVER_COMBO_FLOOR: int = 4
+
+# Flow events director (varied short windows)
+var rush_active: bool = false
+var precision_event_active: bool = false
+var no_bomb_event_active: bool = false
+var rush_timer: float = 0.0
+var next_rush_time: float = 0.0
+const EVENT_FIRST_MIN: float = 36.0
+const EVENT_FIRST_MAX: float = 50.0
+const EVENT_INTERVAL_MIN: float = 42.0
+const EVENT_INTERVAL_MAX: float = 60.0
+const RUSH_DURATION: float = 6.8
+const PRECISION_DURATION: float = 8.0
+const NO_BOMB_DURATION: float = 10.0
+const RUSH_SPAWN_MULT: float = 0.90
+const RUSH_SCORE_MULT: float = 1.20
+const RUSH_BOMB_SCALE: float = 0.58
+const RUSH_GRAVITY_SCALE: float = 0.78
+const PRECISION_SCORE_MULT: float = 1.12
+const NO_BOMB_SCORE_MULT: float = 1.08
+const NO_BOMB_SPAWN_MULT: float = 0.86
+
+# Pity drop director (anti-frustration powerup cadence)
+var pity_powerup_timer: float = 0.0
+var drop_luck_level: int = 0
+const PITY_POWERUP_BASE_INTERVAL: float = 20.0
+const PITY_POWERUP_MIN_INTERVAL: float = 12.0
 
 # UI
 var warning_label: Label = null
@@ -78,8 +125,18 @@ var music_player: AudioStreamPlayer = null
 var life_dots: Array[TextureRect] = []
 var life_dot_texture: Texture2D = null
 var guardian_label: Label = null
+var combo_saver_label: Label = null
+var rush_label: Label = null
 var lane_hint_left: Label = null
 var lane_hint_right: Label = null
+var daily_mission_title_label: Label = null
+var daily_mission_progress_label: Label = null
+var daily_mission_data: Dictionary = {}
+var daily_mission_start_progress: float = 0.0
+var daily_mission_live_progress: float = -1.0
+var daily_mission_ready_announced: bool = false
+var daily_mission_ui_timer: float = 0.0
+const DAILY_MISSION_UI_INTERVAL: float = 0.15
 
 # Slow-mo (short clutch window, not permanent)
 var slow_mo_active: bool = false
@@ -147,13 +204,14 @@ const SUPER_COOLDOWN: float = 1.5
 const SUPER_GRAVITY_MULT: float = 2.2
 var super_cooldown_active: bool = false
 var bg_saved: Dictionary = {}
-var bonus_pitch: float = 1.1
 var super_vignette: ColorRect = null
 var super_pulse_tween: Tween = null
 const SUPER_BOUNDS_MARGIN: float = 70.0
 var super_fx_phase: float = 0.0
 var super_spark_timer: float = 0.0
 const SUPER_SPARK_INTERVAL: float = 0.55
+var super_reverb_bus_idx: int = -1
+var super_reverb_fx_idx: int = -1
 
 # Adaptive FX profile (mobile + user particle quality)
 var fx_quality: int = 2
@@ -199,8 +257,12 @@ func _ready():
 
 	_setup_life_dots()
 	_setup_guardian_label()
+	_setup_combo_saver_label()
 	_setup_warning_label()
 	_setup_timer_label()
+	_setup_rush_label()
+	_setup_daily_mission_hud()
+	_init_daily_mission_tracking()
 	_setup_wall_glow()
 	_setup_lane_hud()
 	_setup_background_particles()
@@ -208,7 +270,9 @@ func _ready():
 	_update_ui()
 	_setup_note_player()
 	next_burst_time = randf_range(12.0, 18.0)
+	next_rush_time = randf_range(EVENT_FIRST_MIN, EVENT_FIRST_MAX)
 	adaptive_eval_timer = ADAPTIVE_EVAL_INTERVAL
+	_refresh_runtime_modifiers()
 	_load_first_run()
 	_update_spawn_wait_time()
 	if DEBUG_SPAWN_SUPER:
@@ -220,6 +284,14 @@ func _ready():
 		dot.modulate.a = 0.0
 	if timer_label:
 		timer_label.modulate.a = 0.0
+	if combo_saver_label:
+		combo_saver_label.modulate.a = 0.0
+	if rush_label:
+		rush_label.modulate.a = 0.0
+	if daily_mission_title_label:
+		daily_mission_title_label.modulate.a = 0.0
+	if daily_mission_progress_label:
+		daily_mission_progress_label.modulate.a = 0.0
 
 	_play_countdown()
 	_maybe_show_quick_tip()
@@ -407,6 +479,14 @@ func _play_countdown():
 		ui_t.tween_property(dot, "modulate:a", 1.0, 0.2)
 	if timer_label:
 		ui_t.tween_property(timer_label, "modulate:a", 1.0, 0.2)
+	if combo_saver_label:
+		ui_t.tween_property(combo_saver_label, "modulate:a", 1.0, 0.2)
+	if rush_label and rush_label.visible:
+		ui_t.tween_property(rush_label, "modulate:a", 1.0, 0.2)
+	if daily_mission_title_label and daily_mission_title_label.visible:
+		ui_t.tween_property(daily_mission_title_label, "modulate:a", 1.0, 0.2)
+	if daily_mission_progress_label and daily_mission_progress_label.visible:
+		ui_t.tween_property(daily_mission_progress_label, "modulate:a", 1.0, 0.2)
 
 	game_started = true
 	spawn_timer.start()
@@ -462,7 +542,13 @@ func _configure_fx_profile():
 func _vibrate(duration_ms: int):
 	var d = duration_ms
 	if fx_is_mobile:
-		d = int(round(float(duration_ms) * 0.90))
+		var high_priority = duration_ms >= 120
+		if haptic_cooldown_timer > 0.0 and not high_priority:
+			return
+		if not high_priority:
+			haptic_cooldown_timer = HAPTIC_COOLDOWN_MOBILE
+		d = int(round(float(duration_ms) * 0.82))
+	d = int(clamp(float(d), 8.0, 95.0))
 	var gs = get_node_or_null("/root/GlobalSettings")
 	if gs and gs.has_method("vibrate"):
 		gs.vibrate(d)
@@ -488,13 +574,309 @@ func _setup_warning_label():
 func _setup_timer_label():
 	timer_label = Label.new()
 	timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	timer_label.add_theme_font_size_override("font_size", 24)
-	timer_label.add_theme_color_override("font_color", Color(0.5, 0.55, 0.7, 0.8))
-	timer_label.position = Vector2(30, 78)
-	timer_label.size = Vector2(160, 30)
+	timer_label.add_theme_font_size_override("font_size", 30)
+	timer_label.add_theme_color_override("font_color", Color(0.9, 0.94, 1.0, 0.98))
+	timer_label.add_theme_constant_override("outline_size", 2)
+	timer_label.add_theme_color_override("font_outline_color", Color(0.06, 0.1, 0.18, 0.95))
+	timer_label.position = Vector2(74, 70)
+	timer_label.size = Vector2(200, 40)
 	timer_label.text = "0:00"
 	timer_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	$CanvasLayer.add_child(timer_label)
+
+func _setup_combo_saver_label():
+	combo_saver_label = Label.new()
+	combo_saver_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	combo_saver_label.add_theme_font_size_override("font_size", 18)
+	combo_saver_label.add_theme_color_override("font_color", Color(0.65, 1.0, 0.78, 0.92))
+	combo_saver_label.position = Vector2(30, 188)
+	combo_saver_label.size = Vector2(320, 26)
+	combo_saver_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$CanvasLayer.add_child(combo_saver_label)
+	_update_combo_saver_label()
+
+func _update_combo_saver_label():
+	if not combo_saver_label:
+		return
+	if combo_saver_charges > 0:
+		combo_saver_label.visible = true
+		combo_saver_label.text = "SAVE READY"
+		combo_saver_label.add_theme_color_override("font_color", Color(0.72, 1.0, 0.76, 0.96))
+	else:
+		combo_saver_label.visible = false
+		combo_saver_label.text = ""
+
+func _setup_rush_label():
+	rush_label = Label.new()
+	rush_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	rush_label.add_theme_font_size_override("font_size", 26)
+	rush_label.add_theme_color_override("font_color", Color(1.0, 0.78, 0.26, 0.95))
+	rush_label.position = Vector2(370, 86)
+	rush_label.size = Vector2(340, 34)
+	rush_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rush_label.visible = false
+	rush_label.text = ""
+	$CanvasLayer.add_child(rush_label)
+
+func _update_rush_label():
+	if not rush_label:
+		return
+	if _is_flow_event_active() and rush_timer > 0.0:
+		rush_label.visible = true
+		rush_label.modulate.a = 1.0
+		var event_text = "RUSH"
+		var event_color = Color(1.0, 0.78, 0.26, 0.95)
+		if precision_event_active:
+			event_text = "PRECISION"
+			event_color = Color(0.62, 1.0, 1.0, 0.95)
+		elif no_bomb_event_active:
+			event_text = "NO BOMB"
+			event_color = Color(1.0, 0.9, 0.45, 0.95)
+		rush_label.text = "%s %.1fs" % [event_text, max(0.0, rush_timer)]
+		rush_label.add_theme_color_override("font_color", event_color)
+	else:
+		rush_label.visible = false
+		rush_label.text = ""
+
+func _refresh_runtime_modifiers():
+	var gs = get_node_or_null("/root/GlobalSettings")
+	clutch_window_duration = CLUTCH_RECOVERY_WINDOW
+	drop_luck_level = 0
+	if gs:
+		if gs.has_method("get_clutch_window_bonus_sec"):
+			clutch_window_duration += float(gs.call("get_clutch_window_bonus_sec"))
+		if gs.has_method("get_drop_luck_level"):
+			drop_luck_level = max(0, int(gs.call("get_drop_luck_level")))
+	clutch_window_duration = clamp(clutch_window_duration, CLUTCH_RECOVERY_WINDOW, CLUTCH_RECOVERY_WINDOW + 1.4)
+
+func _is_flow_event_active() -> bool:
+	return rush_active or precision_event_active or no_bomb_event_active
+
+func _reset_next_flow_event_timer():
+	next_rush_time = time_elapsed + randf_range(EVENT_INTERVAL_MIN, EVENT_INTERVAL_MAX)
+
+func _start_random_flow_event():
+	if _is_flow_event_active():
+		return
+	if super_active or super_cooldown_active:
+		return
+	var roll = randf()
+	if roll < 0.35:
+		_start_rush_event()
+	elif roll < 0.70:
+		_start_precision_event()
+	else:
+		_start_no_bomb_event()
+
+func _start_precision_event():
+	rush_active = false
+	precision_event_active = true
+	no_bomb_event_active = false
+	rush_timer = PRECISION_DURATION
+	_reset_next_flow_event_timer()
+	_update_spawn_wait_time()
+	_update_rush_label()
+	_show_streak_banner("PRECISION", Color(0.65, 1.0, 1.0, 1.0))
+	_show_warning("PRECISION!")
+	_flash_screen(Color(0.55, 1.0, 1.0, 0.1))
+	_vibrate(28)
+
+func _start_no_bomb_event():
+	rush_active = false
+	precision_event_active = false
+	no_bomb_event_active = true
+	rush_timer = NO_BOMB_DURATION
+	_reset_next_flow_event_timer()
+	_update_spawn_wait_time()
+	_update_rush_label()
+	_show_streak_banner("NO BOMB", Color(1.0, 0.86, 0.3, 1.0))
+	_show_warning("NO BOMB!")
+	_flash_screen(Color(1.0, 0.78, 0.26, 0.1))
+	_vibrate(26)
+
+func _end_flow_event(silent: bool = false):
+	var had_event = _is_flow_event_active() or rush_timer > 0.0
+	rush_active = false
+	precision_event_active = false
+	no_bomb_event_active = false
+	rush_timer = 0.0
+	_update_spawn_wait_time()
+	_update_rush_label()
+	if had_event and not silent:
+		_show_warning("EVENT OVER")
+
+func _get_pity_interval() -> float:
+	var interval = PITY_POWERUP_BASE_INTERVAL - float(drop_luck_level) * 1.8
+	return clamp(interval, PITY_POWERUP_MIN_INTERVAL, PITY_POWERUP_BASE_INTERVAL)
+
+func _has_active_powerup_drop() -> bool:
+	for child in get_children():
+		if child is PowerupDrop:
+			return true
+	return false
+
+func _select_useful_powerup_type() -> int:
+	if lives <= 1:
+		return PowerupDrop.PowerupType.HEART
+	var shield_alive = has_node("ShieldWall")
+	if lives == 2 and randf() < clamp(0.7 + float(drop_luck_level) * 0.06, 0.0, 0.95):
+		return PowerupDrop.PowerupType.HEART
+	if shield_pending or shield_alive:
+		var heart_chance = clamp(0.35 + float(drop_luck_level) * 0.1, 0.0, 0.85)
+		return PowerupDrop.PowerupType.HEART if randf() < heart_chance else PowerupDrop.PowerupType.SHIELD_WALL
+	var shield_chance = clamp(0.58 + float(drop_luck_level) * 0.08, 0.0, 0.92)
+	return PowerupDrop.PowerupType.SHIELD_WALL if randf() < shield_chance else PowerupDrop.PowerupType.HEART
+
+func _spawn_powerup_drop(powerup_type: int, spawn_pos: Vector2) -> bool:
+	if not powerup_scene:
+		return false
+	var p = powerup_scene.instantiate() as PowerupDrop
+	if not p:
+		return false
+	p.position = spawn_pos
+	p.powerup_type = powerup_type
+	p.powerup_activated.connect(_on_powerup_activated)
+	add_child(p)
+	pity_powerup_timer = 0.0
+	return true
+
+func _spawn_pity_powerup():
+	if _has_active_powerup_drop():
+		return
+	var p_type = _select_useful_powerup_type()
+	var spawned = _spawn_powerup_drop(p_type, Vector2(randf_range(220, 860), -130))
+	if spawned:
+		_show_warning("AID DROP")
+		_vibrate(20)
+
+func _setup_daily_mission_hud():
+	daily_mission_title_label = Label.new()
+	daily_mission_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	daily_mission_title_label.add_theme_font_size_override("font_size", 16)
+	daily_mission_title_label.add_theme_color_override("font_color", Color(0.8, 0.88, 1.0, 0.86))
+	daily_mission_title_label.position = Vector2(650, 334)
+	daily_mission_title_label.size = Vector2(390, 24)
+	daily_mission_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	daily_mission_title_label.visible = false
+	$CanvasLayer.add_child(daily_mission_title_label)
+
+	daily_mission_progress_label = Label.new()
+	daily_mission_progress_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	daily_mission_progress_label.add_theme_font_size_override("font_size", 14)
+	daily_mission_progress_label.add_theme_color_override("font_color", Color(0.55, 0.95, 0.88, 0.95))
+	daily_mission_progress_label.position = Vector2(650, 356)
+	daily_mission_progress_label.size = Vector2(390, 22)
+	daily_mission_progress_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	daily_mission_progress_label.visible = false
+	$CanvasLayer.add_child(daily_mission_progress_label)
+
+func _init_daily_mission_tracking():
+	daily_mission_data = {}
+	daily_mission_start_progress = 0.0
+	daily_mission_live_progress = -1.0
+	daily_mission_ready_announced = false
+
+	var gs = get_node_or_null("/root/GlobalSettings")
+	if not gs or not gs.has_method("get_daily_mission_status"):
+		if daily_mission_title_label:
+			daily_mission_title_label.visible = false
+		if daily_mission_progress_label:
+			daily_mission_progress_label.visible = false
+		return
+
+	var missions = gs.call("get_daily_mission_status")
+	if not (missions is Array) or missions.is_empty():
+		if daily_mission_title_label:
+			daily_mission_title_label.visible = false
+		if daily_mission_progress_label:
+			daily_mission_progress_label.visible = false
+		return
+
+	var chosen: Dictionary = {}
+	for m in missions:
+		if m is Dictionary and not bool(m.get("completed", false)):
+			chosen = (m as Dictionary).duplicate(true)
+			break
+	if chosen.is_empty():
+		if daily_mission_title_label:
+			daily_mission_title_label.visible = false
+		if daily_mission_progress_label:
+			daily_mission_progress_label.visible = false
+		return
+
+	daily_mission_data = chosen
+	daily_mission_start_progress = float(daily_mission_data.get("progress", 0.0))
+	daily_mission_ui_timer = 0.0
+	if daily_mission_title_label:
+		daily_mission_title_label.visible = true
+	if daily_mission_progress_label:
+		daily_mission_progress_label.visible = true
+	_refresh_daily_mission_hud(true)
+
+func _compute_daily_mission_run_value(metric: String) -> float:
+	match metric:
+		"score":
+			return float(score)
+		"combo":
+			return float(max(max_combo, combo))
+		"time":
+			return time_elapsed
+		"hits":
+			return float(balls_scored)
+		"clean_run":
+			var attempts = balls_scored + balls_thrown
+			if attempts < 20:
+				return 0.0
+			var accuracy = float(balls_scored) / float(attempts) * 100.0 if attempts > 0 else 0.0
+			return 1.0 if accuracy >= 70.0 else 0.0
+	return 0.0
+
+func _format_daily_mission_progress(progress: float, target: float, unit: String) -> String:
+	var p = int(round(progress))
+	var t = int(round(max(target, 1.0)))
+	if unit == "sec":
+		return "%ds/%ds" % [p, t]
+	if unit.is_empty():
+		return "%d/%d" % [p, t]
+	return "%d/%d %s" % [p, t, unit]
+
+func _refresh_daily_mission_hud(force: bool = false):
+	if daily_mission_data.is_empty() or not daily_mission_title_label or not daily_mission_progress_label:
+		return
+
+	var metric = str(daily_mission_data.get("metric", ""))
+	var target = max(1.0, float(daily_mission_data.get("target", 1.0)))
+	var run_value = _compute_daily_mission_run_value(metric)
+	var live_progress = clamp(daily_mission_start_progress + run_value, 0.0, target)
+	var committed_completed = bool(daily_mission_data.get("completed", false))
+	var ready_now = live_progress >= target
+
+	if committed_completed:
+		daily_mission_title_label.visible = false
+		daily_mission_progress_label.visible = false
+		return
+
+	if not force and abs(live_progress - daily_mission_live_progress) < 0.001:
+		return
+	daily_mission_live_progress = live_progress
+
+	daily_mission_title_label.visible = true
+	daily_mission_progress_label.visible = true
+	daily_mission_title_label.text = "DAILY  " + str(daily_mission_data.get("title", "OBJECTIVE")).to_upper()
+	if metric == "clean_run":
+		var attempts = balls_scored + balls_thrown
+		var accuracy = float(balls_scored) / float(attempts) * 100.0 if attempts > 0 else 0.0
+		var status = "READY - FINISH RUN" if run_value >= 1.0 else "NEED 70% ON 20+ HITS"
+		daily_mission_progress_label.text = "%s  |  ACC %d%%  |  HITS %d/20" % [status, int(accuracy), attempts]
+		daily_mission_progress_label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.5, 0.95) if run_value >= 1.0 else Color(0.55, 0.95, 0.88, 0.95))
+	else:
+		var unit = str(daily_mission_data.get("unit", ""))
+		daily_mission_progress_label.text = _format_daily_mission_progress(live_progress, target, unit)
+		daily_mission_progress_label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.5, 0.95) if ready_now else Color(0.55, 0.95, 0.88, 0.95))
+
+	if ready_now and not daily_mission_ready_announced and not committed_completed:
+		daily_mission_ready_announced = true
+		_show_streak_banner("DAILY OBJECTIVE READY", Color(1.0, 0.95, 0.5, 1.0))
 
 func _setup_guardian_label():
 	guardian_label = Label.new()
@@ -554,6 +936,7 @@ func _setup_lane_hud():
 	lane_hint_left.position = Vector2(10, 185)
 	lane_hint_left.add_theme_font_size_override("font_size", 22)
 	lane_hint_left.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lane_hint_left.visible = false
 	$CanvasLayer.add_child(lane_hint_left)
 
 	lane_hint_right = Label.new()
@@ -564,6 +947,7 @@ func _setup_lane_hud():
 	lane_hint_right.position = Vector2(870, 185)
 	lane_hint_right.add_theme_font_size_override("font_size", 22)
 	lane_hint_right.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lane_hint_right.visible = false
 	$CanvasLayer.add_child(lane_hint_right)
 
 	_update_lane_hud(false)
@@ -571,24 +955,15 @@ func _setup_lane_hud():
 func _update_lane_hud(pulse: bool = true):
 	if not lane_hint_left or not lane_hint_right:
 		return
-
-	if super_active:
-		lane_hint_left.text = "ANY"
-		lane_hint_right.text = "ANY"
-		lane_hint_left.add_theme_color_override("font_color", Color(1.0, 0.95, 0.35, 0.9))
-		lane_hint_right.add_theme_color_override("font_color", Color(1.0, 0.95, 0.35, 0.9))
-	else:
-		var left_is_cyan = walls_inverted
-		lane_hint_left.text = "CYAN" if left_is_cyan else "MAGENTA"
-		lane_hint_right.text = "MAGENTA" if left_is_cyan else "CYAN"
-		lane_hint_left.add_theme_color_override("font_color", Color(0.0, 1.0, 1.0, 0.8) if left_is_cyan else Color(1.0, 0.0, 1.0, 0.8))
-		lane_hint_right.add_theme_color_override("font_color", Color(1.0, 0.0, 1.0, 0.8) if left_is_cyan else Color(0.0, 1.0, 1.0, 0.8))
-
-	if pulse:
-		_pulse_lane_hud()
+	lane_hint_left.visible = false
+	lane_hint_right.visible = false
+	lane_hint_left.text = ""
+	lane_hint_right.text = ""
 
 func _pulse_lane_hud():
 	if not lane_hint_left or not lane_hint_right:
+		return
+	if not lane_hint_left.visible and not lane_hint_right.visible:
 		return
 	lane_hint_left.scale = Vector2(0.9, 0.9)
 	lane_hint_right.scale = Vector2(0.9, 0.9)
@@ -601,6 +976,9 @@ func _pulse_lane_hud():
 	t.tween_property(lane_hint_right, "modulate:a", 1.0, 0.2)
 
 func _process(delta):
+	if haptic_cooldown_timer > 0.0:
+		haptic_cooldown_timer = max(0.0, haptic_cooldown_timer - delta)
+
 	if Input.is_action_just_pressed("ui_cancel"):
 		if not game_over:
 			if pause_menu.visible:
@@ -613,6 +991,27 @@ func _process(delta):
 		return
 
 	time_elapsed += delta
+	pity_powerup_timer += delta
+	if clutch_window_timer > 0.0:
+		clutch_window_timer = max(0.0, clutch_window_timer - delta)
+	if _is_flow_event_active():
+		rush_timer = max(0.0, rush_timer - delta)
+		_update_rush_label()
+		if rush_timer <= 0.0:
+			_end_flow_event()
+	elif time_elapsed >= next_rush_time and not super_active and not super_cooldown_active:
+		_start_random_flow_event()
+	if pity_powerup_timer >= _get_pity_interval():
+		if not super_active and not super_cooldown_active:
+			if not _has_active_powerup_drop():
+				_spawn_pity_powerup()
+				pity_powerup_timer = 0.0
+			else:
+				pity_powerup_timer = _get_pity_interval()
+	daily_mission_ui_timer -= delta
+	if daily_mission_ui_timer <= 0.0:
+		daily_mission_ui_timer = DAILY_MISSION_UI_INTERVAL
+		_refresh_daily_mission_hud()
 
 	if assist_window_timer > 0.0:
 		assist_window_timer -= delta
@@ -703,16 +1102,16 @@ func _apply_difficulty_step(step: int):
 	if time_elapsed >= INVERSION_START_TIME and step >= 3 and assist_window_timer <= 0.0 and not inversion_active and not inversion_pending and randf() < 0.35:
 		_schedule_wall_inversion()
 
-	if step >= 4 and time_elapsed >= WARMUP_TIME and assist_window_timer <= 0.0 and randf() < 0.25:
+	if step >= 4 and time_elapsed >= WARMUP_TIME and assist_window_timer <= 0.0 and not _is_flow_event_active() and randf() < 0.25:
 		_trigger_spawn_burst()
 
-	if step >= 5 and assist_window_timer <= 0.0:
+	if step >= 5 and assist_window_timer <= 0.0 and not _is_flow_event_active():
 		_spawn_ball()
 
 	if time_elapsed >= INVERSION_START_TIME and step >= 6 and assist_window_timer <= 0.0 and not inversion_active and not inversion_pending and randf() < 0.55:
 		_schedule_wall_inversion()
 
-	if time_elapsed >= next_burst_time and assist_window_timer <= 0.0 and not spawn_burst_active:
+	if time_elapsed >= next_burst_time and assist_window_timer <= 0.0 and not spawn_burst_active and not _is_flow_event_active():
 		next_burst_time = time_elapsed + randf_range(10.0, 16.0)
 		_trigger_spawn_burst()
 
@@ -759,10 +1158,17 @@ func _trigger_spawn_burst():
 	spawn_burst_active = true
 	_show_warning("BURST!")
 	_vibrate(40)
-	var count = randi_range(2, 4) if assist_window_timer > 0.0 else randi_range(3, 6)
+	var count = 0
+	if rush_active:
+		count = randi_range(1, 2)
+	elif _is_flow_event_active():
+		count = randi_range(2, 3)
+	else:
+		count = randi_range(2, 4) if assist_window_timer > 0.0 else randi_range(3, 6)
+	var step_delay = 0.27 if rush_active else (0.24 if _is_flow_event_active() else 0.2)
 	for i in range(count):
 		_spawn_ball()
-		await get_tree().create_timer(0.2).timeout
+		await get_tree().create_timer(step_delay).timeout
 	spawn_burst_active = false
 
 func _show_warning(text: String):
@@ -784,7 +1190,13 @@ func _update_spawn_wait_time():
 	var wait_target = spawn_rate + adaptive_spawn_offset
 	if assist_window_timer > 0.0:
 		wait_target += 0.12
-	wait_target = clamp(wait_target, 0.55, 2.4)
+	if rush_active:
+		wait_target *= RUSH_SPAWN_MULT
+	elif no_bomb_event_active:
+		wait_target *= NO_BOMB_SPAWN_MULT
+	elif precision_event_active:
+		wait_target *= 1.08
+	wait_target = clamp(wait_target, 0.45, 2.4)
 
 	if super_active:
 		spawn_timer.wait_time = max(0.35, wait_target * super_spawn_multiplier)
@@ -816,7 +1228,13 @@ func _spawn_ball():
 	if not ball:
 		return
 
-	ball.position = Vector2(randf_range(150, 930), -100)
+	var spawn_x = randf_range(150, 930)
+	for _i in range(3):
+		if abs(spawn_x - last_spawn_x) >= 120.0:
+			break
+		spawn_x = randf_range(150, 930)
+	last_spawn_x = spawn_x
+	ball.position = Vector2(spawn_x, -100)
 
 	var effective_bomb = _get_effective_bomb_chance()
 	var rand = randf()
@@ -831,8 +1249,20 @@ func _spawn_ball():
 
 	if super_active and ball.ball_type == BallDragThrow.BallType.BOMB:
 		ball.ball_type = BallDragThrow.BallType.YELLOW
+	if ball.ball_type == BallDragThrow.BallType.BOMB:
+		if last_spawned_type == BallDragThrow.BallType.BOMB:
+			ball.ball_type = BallDragThrow.BallType.YELLOW if randf() < 0.5 else BallDragThrow.BallType.CYAN
+		elif lives <= 1 and randf() < 0.5:
+			ball.ball_type = BallDragThrow.BallType.YELLOW
+	last_spawned_type = ball.ball_type
 
 	var grav = 0.25 + (time_elapsed / 80.0)
+	if rush_active:
+		grav *= RUSH_GRAVITY_SCALE
+	elif precision_event_active:
+		grav *= 0.92
+	elif no_bomb_event_active:
+		grav *= 0.9
 	if super_active:
 		grav *= SUPER_GRAVITY_MULT
 	ball.gravity_scale = min(grav, 2.4)
@@ -948,6 +1378,7 @@ func _on_laser_ball_destroyed(points: int, ball: BallDragThrow):
 		balls_scored += 1
 		if combo > max_combo:
 			max_combo = combo
+		_track_combo_saver_on_hit()
 	wrong_wall_streak = 0
 	recent_hit_window = min(recent_hit_window + 1, 20)
 	if assist_window_timer > 0.0 and combo >= 6:
@@ -963,6 +1394,16 @@ func _on_laser_ball_destroyed(points: int, ball: BallDragThrow):
 	if perfect_bonus > 0:
 		total += perfect_bonus
 		_show_perfect_popup(perfect_bonus)
+
+	var near_miss_bonus = _calculate_near_miss_bonus(ball)
+	if near_miss_bonus > 0:
+		total += near_miss_bonus
+		_show_near_miss_popup(near_miss_bonus)
+
+	var clutch_bonus = _consume_clutch_bonus()
+	if clutch_bonus > 0:
+		total += clutch_bonus
+		_show_clutch_popup(clutch_bonus)
 
 	if not combo_frozen:
 		if combo == 5 and not first_streak_rewarded:
@@ -984,6 +1425,12 @@ func _on_laser_ball_destroyed(points: int, ball: BallDragThrow):
 
 	if double_points_active:
 		total *= 2
+	if rush_active:
+		total = int(round(float(total) * RUSH_SCORE_MULT))
+	elif precision_event_active:
+		total = int(round(float(total) * PRECISION_SCORE_MULT))
+	elif no_bomb_event_active:
+		total = int(round(float(total) * NO_BOMB_SCORE_MULT))
 
 	score += total
 	_play_note_sequence()
@@ -1003,6 +1450,7 @@ func _on_laser_ball_destroyed(points: int, ball: BallDragThrow):
 		_regain_life()
 
 	_update_ui()
+	_refresh_daily_mission_hud(true)
 	_spawn_score_popup(total)
 	_check_milestone()
 
@@ -1099,45 +1547,26 @@ func _activate_overdrive():
 	_update_streak_bar()
 
 func _grant_shield():
-	if guardian_available or guardian_used_once:
+	if shield_pending:
 		return
-	guardian_available = true
-	_update_guardian_label()
-	_show_streak_banner("SHIELD CHARGED", Color(0.4, 1, 0.6, 1))
+	_arm_shield()
 
 func _spawn_powerup_for_streak():
-	if not powerup_scene:
-		return
-	var p = powerup_scene.instantiate() as PowerupDrop
-	if not p:
-		return
-	p.position = Vector2(randf_range(200, 880), -120)
-	if lives < 3:
-		p.powerup_type = PowerupDrop.PowerupType.HEART
-	else:
-		p.powerup_type = PowerupDrop.PowerupType.SHIELD_WALL
-	p.powerup_activated.connect(_on_powerup_activated)
-	add_child(p)
+	var p_type = PowerupDrop.PowerupType.HEART if lives < 3 else PowerupDrop.PowerupType.SHIELD_WALL
+	_spawn_powerup_drop(p_type, Vector2(randf_range(200, 880), -120))
 
 func _spawn_super_powerup():
 	if super_active:
-		return
-	if not powerup_scene:
 		return
 	for child in get_children():
 		if child is PowerupDrop:
 			var p_child = child as PowerupDrop
 			if p_child.powerup_type == PowerupDrop.PowerupType.SUPER:
 				return
-	var p = powerup_scene.instantiate() as PowerupDrop
-	if not p:
-		return
-	p.position = Vector2(randf_range(250, 830), -140)
-	p.powerup_type = PowerupDrop.PowerupType.SUPER
-	p.powerup_activated.connect(_on_powerup_activated)
-	add_child(p)
+	_spawn_powerup_drop(PowerupDrop.PowerupType.SUPER, Vector2(randf_range(250, 830), -140))
 
 func _on_powerup_activated(p_type: int):
+	pity_powerup_timer = 0.0
 	match p_type:
 		PowerupDrop.PowerupType.HEART:
 			if lives < 3:
@@ -1193,6 +1622,8 @@ func _activate_shield_wall():
 func _start_super_mode():
 	if super_active:
 		return
+	if _is_flow_event_active():
+		_end_rush_event(true)
 	if inversion_pending:
 		inversion_pending = false
 		_stop_inversion_warning()
@@ -1208,9 +1639,7 @@ func _start_super_mode():
 	_show_warning("MEGA BONUS!")
 	_flash_screen(Color(1, 0.95, 0.35, 0.18))
 	_update_spawn_wait_time()
-	# Bonus music feel (pitch only, actual track later)
-	if music_player:
-		music_player.pitch_scale = bonus_pitch
+	_enable_super_reverb()
 
 func _capture_existing_balls_for_super():
 	for child in get_children():
@@ -1234,8 +1663,7 @@ func _end_super_mode():
 	_update_lane_hud(true)
 	_show_warning("RULES BACK")
 	_update_spawn_wait_time()
-	if music_player:
-		music_player.pitch_scale = 1.0
+	_disable_super_reverb()
 	_start_super_cooldown()
 
 func _start_super_cooldown():
@@ -1533,6 +1961,8 @@ func _get_super_bounds() -> Vector2:
 func _get_effective_bomb_chance() -> float:
 	if super_active or bomb_pause_timer > 0.0:
 		return 0.0
+	if no_bomb_event_active:
+		return 0.0
 	var chance = bomb_chance
 	if first_run_active:
 		if time_elapsed < 20.0:
@@ -1552,10 +1982,57 @@ func _get_effective_bomb_chance() -> float:
 		chance *= 0.45
 	if lives <= 1:
 		chance *= 0.55
+	if rush_active:
+		chance *= RUSH_BOMB_SCALE
+	elif precision_event_active:
+		chance *= 0.72
 
 	var flow_scale = lerp(0.7, 1.15, adaptive_flow_score)
 	chance *= flow_scale
 	return clamp(chance, 0.0, 0.30)
+
+func _track_combo_saver_on_hit():
+	if combo_frozen or super_active:
+		return
+	if combo_saver_charges >= COMBO_SAVER_MAX_CHARGES:
+		return
+	combo_saver_hits += 1
+	if combo_saver_hits >= COMBO_SAVER_HITS_PER_CHARGE:
+		combo_saver_charges = min(COMBO_SAVER_MAX_CHARGES, combo_saver_charges + 1)
+		combo_saver_hits = 0
+		_show_streak_banner("SAVE READY", Color(0.72, 1.0, 0.76, 1.0))
+		_vibrate(34)
+	_update_combo_saver_label()
+
+func _consume_combo_saver() -> bool:
+	if combo_saver_charges <= 0:
+		return false
+	combo_saver_charges -= 1
+	combo_saver_hits = 0
+	combo = max(COMBO_SAVER_COMBO_FLOOR, combo - 1)
+	_show_streak_banner("COMBO SAVED", Color(0.7, 1.0, 0.74, 1.0))
+	_flash_screen(Color(0.65, 1.0, 0.72, 0.1))
+	_vibrate(40)
+	_update_combo_saver_label()
+	return true
+
+func _start_rush_event():
+	if _is_flow_event_active():
+		return
+	rush_active = true
+	precision_event_active = false
+	no_bomb_event_active = false
+	rush_timer = RUSH_DURATION
+	_reset_next_flow_event_timer()
+	_update_spawn_wait_time()
+	_update_rush_label()
+	_show_streak_banner("RUSH x1.2", Color(1.0, 0.78, 0.26, 1.0))
+	_show_warning("RUSH!")
+	_flash_screen(Color(1.0, 0.65, 0.2, 0.12))
+	_vibrate(36)
+
+func _end_rush_event(silent: bool = false):
+	_end_flow_event(silent)
 
 func _load_tutorial_flag():
 	if FileAccess.file_exists("user://tutorial_seen.save"):
@@ -1650,6 +2127,33 @@ func _duck_music(target_db: float, duration: float):
 	music_duck_tween.tween_property(music_player, "volume_db", target_db, 0.05).set_ease(Tween.EASE_OUT)
 	music_duck_tween.tween_property(music_player, "volume_db", music_base_db, duration).set_ease(Tween.EASE_IN)
 
+func _enable_super_reverb():
+	if super_reverb_bus_idx >= 0 and super_reverb_fx_idx >= 0:
+		return
+	var music_bus_idx = AudioServer.get_bus_index("Music")
+	if music_bus_idx < 0:
+		return
+	var reverb = AudioEffectReverb.new()
+	reverb.set("room_size", 0.34)
+	reverb.set("damping", 0.56)
+	reverb.set("spread", 0.72)
+	reverb.set("hipass", 0.14)
+	reverb.set("dry", 0.95)
+	reverb.set("wet", 0.12)
+	AudioServer.add_bus_effect(music_bus_idx, reverb)
+	super_reverb_bus_idx = music_bus_idx
+	super_reverb_fx_idx = AudioServer.get_bus_effect_count(music_bus_idx) - 1
+
+func _disable_super_reverb():
+	if super_reverb_bus_idx < 0 or super_reverb_fx_idx < 0:
+		return
+	if super_reverb_bus_idx < AudioServer.get_bus_count():
+		var fx_count = AudioServer.get_bus_effect_count(super_reverb_bus_idx)
+		if super_reverb_fx_idx < fx_count:
+			AudioServer.remove_bus_effect(super_reverb_bus_idx, super_reverb_fx_idx)
+	super_reverb_bus_idx = -1
+	super_reverb_fx_idx = -1
+
 func _sync_balls_inversion():
 	for child in get_children():
 		if child is BallDragThrow:
@@ -1732,11 +2236,40 @@ func _calculate_perfect_bonus(ball: BallDragThrow) -> int:
 	var t = ball.get_time_since_throw()
 	if t < 0.0:
 		return 0
-	if t <= 0.55:
-		return 20
-	if t <= 0.75:
-		return 10
+	var fast_window = 0.55 + (0.12 if precision_event_active else 0.0)
+	var good_window = 0.75 + (0.16 if precision_event_active else 0.0)
+	if t <= fast_window:
+		return 24 if precision_event_active else 20
+	if t <= good_window:
+		return 14 if precision_event_active else 10
 	return 0
+
+func _calculate_near_miss_bonus(ball: BallDragThrow) -> int:
+	if not ball or not is_instance_valid(ball):
+		return 0
+	if super_active or ball.universal_wall_match:
+		return 0
+	var t = ball.get_time_since_throw()
+	var near_miss_time = NEAR_MISS_MIN_THROW_TIME - (0.10 if precision_event_active else 0.0)
+	if t < near_miss_time:
+		return 0
+	var view_h = max(1.0, get_viewport_rect().size.y)
+	var y_ratio = ball.global_position.y / view_h
+	if y_ratio >= NEAR_MISS_DEEP_Y_RATIO:
+		return 30 if precision_event_active else 24
+	if y_ratio >= NEAR_MISS_Y_RATIO:
+		return 20 if precision_event_active else 14
+	return 0
+
+func _consume_clutch_bonus() -> int:
+	if clutch_window_timer <= 0.0:
+		return 0
+	var speed_ratio = clamp(clutch_window_timer / max(0.01, clutch_window_duration), 0.0, 1.0)
+	var bonus = int(round(lerp(float(CLUTCH_BONUS_MIN), float(CLUTCH_BONUS_MAX), speed_ratio)))
+	if lives <= 1:
+		bonus += CLUTCH_LAST_LIFE_EXTRA
+	clutch_window_timer = 0.0
+	return bonus
 
 func _show_perfect_popup(bonus: int):
 	var label = Label.new()
@@ -1754,6 +2287,45 @@ func _show_perfect_popup(bonus: int):
 	var t = create_tween()
 	t.tween_property(label, "scale", Vector2(1.25, 1.25), 0.12).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
 	t.tween_property(label, "position:y", label.position.y - 80, 0.5).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(label, "modulate:a", 0.0, 0.45)
+	t.tween_callback(label.queue_free)
+
+func _show_near_miss_popup(bonus: int):
+	var label = Label.new()
+	label.text = "NEAR MISS +" + str(bonus)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 20)
+	label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.52, 1.0))
+	label.position = Vector2(355, 570)
+	label.size = Vector2(370, 56)
+	label.pivot_offset = Vector2(185, 28)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$CanvasLayer.add_child(label)
+
+	label.scale = Vector2(0.45, 0.45)
+	var t = create_tween()
+	t.tween_property(label, "scale", Vector2(1.2, 1.2), 0.11).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	t.tween_property(label, "position:y", label.position.y - 70, 0.45).set_ease(Tween.EASE_OUT)
+	t.parallel().tween_property(label, "modulate:a", 0.0, 0.4)
+	t.tween_callback(label.queue_free)
+
+func _show_clutch_popup(bonus: int):
+	var label = Label.new()
+	label.text = "CLUTCH +" + str(bonus)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 24)
+	label.add_theme_color_override("font_color", Color(0.68, 1.0, 0.62, 1.0))
+	label.position = Vector2(330, 622)
+	label.size = Vector2(420, 64)
+	label.pivot_offset = Vector2(210, 32)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	$CanvasLayer.add_child(label)
+
+	label.scale = Vector2(0.36, 0.36)
+	var t = create_tween()
+	t.tween_property(label, "scale", Vector2(1.28, 1.28), 0.11).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	t.tween_property(label, "scale", Vector2(1.02, 1.02), 0.08)
+	t.parallel().tween_property(label, "position:y", label.position.y - 84, 0.5).set_ease(Tween.EASE_OUT)
 	t.parallel().tween_property(label, "modulate:a", 0.0, 0.45)
 	t.tween_callback(label.queue_free)
 
@@ -1791,7 +2363,11 @@ func _on_wrong_wall():
 		wrong_wall_streak = 0
 		_on_ball_missed()
 		return
-	combo = 0
+	var combo_saved = false
+	if not combo_frozen and combo >= 5:
+		combo_saved = _consume_combo_saver()
+	if not combo_saved:
+		combo = 0
 	if lives <= 2:
 		assist_window_timer = max(assist_window_timer, 2.0)
 		_update_spawn_wait_time()
@@ -1861,8 +2437,13 @@ func _spawn_score_popup(points: int):
 
 func _on_ball_missed():
 	lives -= 1
+	clutch_window_timer = clutch_window_duration
+	var combo_saved = false
+	if not combo_frozen and combo >= 5:
+		combo_saved = _consume_combo_saver()
 	if not combo_frozen:
-		combo = 0
+		if not combo_saved:
+			combo = 0
 	wrong_wall_streak = 0
 	overdrive_active = false
 	double_points_active = false
@@ -1888,6 +2469,7 @@ func _on_ball_missed():
 		camera.medium_shake()
 
 	_update_ui()
+	_refresh_daily_mission_hud(true)
 	_flash_screen(Color(1, 0, 0, 0.2))
 	_spawn_miss_indicator()
 	_pop_life_dot(lives)
@@ -2055,7 +2637,10 @@ func _game_over():
 	if game_over:
 		return
 	game_over = true
+	clutch_window_timer = 0.0
+	_end_rush_event(true)
 	spawn_timer.stop()
+	_disable_super_reverb()
 
 	if slow_mo_active:
 		_end_slow_mo()
@@ -2078,8 +2663,12 @@ func _game_over():
 	var accuracy = 0.0
 	if balls_thrown + balls_scored > 0:
 		accuracy = float(balls_scored) / float(balls_thrown + balls_scored) * 100.0
+	var run_report: Dictionary = {}
+	var gs = get_node_or_null("/root/GlobalSettings")
+	if gs and gs.has_method("register_run"):
+		run_report = gs.call("register_run", score, max_combo, time_elapsed, accuracy, balls_scored, balls_thrown + balls_scored)
 	_mark_first_run_done()
-	game_over_menu.show_game_over(score, max_combo, time_str, accuracy)
+	game_over_menu.show_game_over(score, max_combo, time_str, accuracy, run_report)
 
 func _update_ui():
 	if score_label:
@@ -2101,6 +2690,7 @@ func _update_ui():
 			combo_label.visible = false
 
 	_update_streak_bar()
+	_update_combo_saver_label()
 
 func _animate_label(label: Label, scale_to: float = 1.15):
 	scale_to = min(scale_to, 1.6)
@@ -2149,3 +2739,7 @@ func _spawn_direction_hint(ball: BallDragThrow):
 	t.tween_property(hint, "position:y", hint.position.y - 35, 0.4).set_ease(Tween.EASE_OUT)
 	t.parallel().tween_property(hint, "modulate:a", 0.0, 0.4)
 	t.tween_callback(hint.queue_free)
+
+func _exit_tree():
+	_disable_super_reverb()
+	Engine.time_scale = 1.0

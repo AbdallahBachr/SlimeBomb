@@ -13,6 +13,7 @@ var high_score: int = 0
 var max_combo: int = 0
 var time_survived: String = "0:00"
 var accuracy_pct: float = 0.0
+var run_report: Dictionary = {}
 var settings_menu: Control = null
 var ui_sfx: AudioStream = preload("res://assets/sounds/UImenu.wav")
 
@@ -53,11 +54,12 @@ func _on_settings():
 	if settings_menu:
 		settings_menu.show_settings()
 
-func show_game_over(score: int, combo: int, time_str: String = "0:00", accuracy: float = 0.0):
+func show_game_over(score: int, combo: int, time_str: String = "0:00", accuracy: float = 0.0, report: Dictionary = {}):
 	current_score = score
 	max_combo = combo
 	time_survived = time_str
 	accuracy_pct = accuracy
+	run_report = report.duplicate(true)
 
 	_load_high_score()
 
@@ -157,6 +159,137 @@ func _animate_entrance(is_new_best: bool):
 	rank_label.modulate.a = 0.0
 	var rt = create_tween()
 	rt.tween_property(rank_label, "modulate:a", 1.0, 0.45).set_delay(0.35)
+	_render_run_rewards(vbox, rank_label.get_index())
+	if retry_button:
+		retry_button.grab_focus()
+
+func _render_run_rewards(vbox: VBoxContainer, insert_after_index: int):
+	var dynamic_nodes = [
+		"RunRewardLabel",
+		"SessionLabel",
+		"LevelRewardLabel",
+		"MissionClearLabel",
+		"MissionHeader",
+		"MissionRow0",
+		"MissionRow1",
+		"MissionRow2"
+	]
+	for node_name in dynamic_nodes:
+		if vbox.has_node(node_name):
+			vbox.get_node(node_name).queue_free()
+
+	if run_report.is_empty():
+		return
+
+	var next_index = insert_after_index + 1
+	var run_coins = int(run_report.get("run_coins", 0))
+	var base_run_coins = int(run_report.get("base_run_coins", run_coins))
+	var coin_multiplier = float(run_report.get("coin_multiplier", 1.0))
+	var session_coin_multiplier = float(run_report.get("coin_multiplier_session", 1.0))
+	var run_xp = int(run_report.get("run_xp", 0))
+	if run_coins > 0 or run_xp > 0:
+		var reward_label = Label.new()
+		reward_label.name = "RunRewardLabel"
+		if base_run_coins != run_coins and base_run_coins > 0:
+			reward_label.text = "REWARD  +%d COINS (x%.2f)  +%d XP" % [run_coins, coin_multiplier, run_xp]
+		else:
+			reward_label.text = "REWARD  +%d COINS  +%d XP" % [run_coins, run_xp]
+		reward_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		reward_label.add_theme_font_size_override("font_size", 18)
+		reward_label.add_theme_color_override("font_color", Color(0.4, 1.0, 0.9, 0.92))
+		reward_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vbox.add_child(reward_label)
+		vbox.move_child(reward_label, next_index)
+		next_index += 1
+
+	var session_streak = int(run_report.get("session_streak", 0))
+	if session_streak > 0:
+		var session_label = Label.new()
+		session_label.name = "SessionLabel"
+		session_label.text = "SESSION STREAK x%d  |  REMATCH BONUS +%d%%" % [session_streak, int(round((session_coin_multiplier - 1.0) * 100.0))]
+		session_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		session_label.add_theme_font_size_override("font_size", 15)
+		session_label.add_theme_color_override("font_color", Color(1.0, 0.92, 0.55, 0.95))
+		session_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vbox.add_child(session_label)
+		vbox.move_child(session_label, next_index)
+		next_index += 1
+
+	var level_ups = int(run_report.get("level_ups", 0))
+	if level_ups > 0:
+		var level_bonus_coins = int(run_report.get("level_bonus_coins", 0))
+		var level_label = Label.new()
+		level_label.name = "LevelRewardLabel"
+		level_label.text = "LEVEL UP x%d  +%d COINS" % [level_ups, level_bonus_coins]
+		level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		level_label.add_theme_font_size_override("font_size", 16)
+		level_label.add_theme_color_override("font_color", Color(1.0, 0.95, 0.4, 0.95))
+		level_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vbox.add_child(level_label)
+		vbox.move_child(level_label, next_index)
+		next_index += 1
+
+	var mission_completions = run_report.get("mission_completions", [])
+	if mission_completions is Array and mission_completions.size() > 0:
+		var clear_label = Label.new()
+		clear_label.name = "MissionClearLabel"
+		clear_label.text = "DAILY CLEARS  +%d" % mission_completions.size()
+		clear_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		clear_label.add_theme_font_size_override("font_size", 16)
+		clear_label.add_theme_color_override("font_color", Color(1.0, 0.9, 0.45, 0.95))
+		clear_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vbox.add_child(clear_label)
+		vbox.move_child(clear_label, next_index)
+		next_index += 1
+
+	var missions = run_report.get("daily_missions", [])
+	if not (missions is Array) or missions.is_empty():
+		return
+
+	var completed_count = 0
+	for mission in missions:
+		if mission is Dictionary and bool(mission.get("completed", false)):
+			completed_count += 1
+
+	var mission_header = Label.new()
+	mission_header.name = "MissionHeader"
+	mission_header.text = "DAILY MISSIONS  %d/%d" % [completed_count, missions.size()]
+	mission_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	mission_header.add_theme_font_size_override("font_size", 15)
+	mission_header.add_theme_color_override("font_color", Color(0.75, 0.82, 1.0, 0.9))
+	mission_header.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(mission_header)
+	vbox.move_child(mission_header, next_index)
+	next_index += 1
+
+	for i in range(min(3, missions.size())):
+		var mission_data = missions[i]
+		if not (mission_data is Dictionary):
+			continue
+		var title = str(mission_data.get("title", "Mission"))
+		var completed = bool(mission_data.get("completed", false))
+		var progress = float(mission_data.get("progress", 0.0))
+		var target = float(mission_data.get("target", 1.0))
+		var unit = str(mission_data.get("unit", ""))
+		var line = Label.new()
+		line.name = "MissionRow" + str(i)
+		line.text = "%s %s  %s" % ["OK" if completed else "..", title.to_upper(), _format_mission_progress(progress, target, unit)]
+		line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		line.add_theme_font_size_override("font_size", 14)
+		line.add_theme_color_override("font_color", Color(0.62, 0.95, 0.72, 0.9) if completed else Color(0.82, 0.86, 0.95, 0.8))
+		line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		vbox.add_child(line)
+		vbox.move_child(line, next_index)
+		next_index += 1
+
+func _format_mission_progress(progress: float, target: float, unit: String) -> String:
+	var p = int(round(progress))
+	var t = int(round(max(target, 1.0)))
+	if unit == "sec":
+		return "%ds/%ds" % [p, t]
+	if unit.is_empty():
+		return "%d/%d" % [p, t]
+	return "%d/%d %s" % [p, t, unit]
 
 func _load_high_score():
 	if FileAccess.file_exists("user://highscore.save"):
@@ -173,11 +306,24 @@ func _save_high_score():
 
 func _on_retry():
 	_play_ui()
+	var gs = get_node_or_null("/root/GlobalSettings")
+	if gs and gs.has_method("begin_retry_run"):
+		gs.begin_retry_run()
 	get_tree().change_scene_to_file("res://scenes/minigames/DragThrowGame.tscn")
 
 func _on_menu():
 	_play_ui()
+	var gs = get_node_or_null("/root/GlobalSettings")
+	if gs and gs.has_method("end_retry_session"):
+		gs.end_retry_session()
 	get_tree().change_scene_to_file("res://scenes/ui/MainMenu.tscn")
+
+func _unhandled_input(event):
+	if not visible:
+		return
+	if event.is_action_pressed("ui_accept"):
+		_on_retry()
+		get_viewport().set_input_as_handled()
 
 func _play_ui():
 	if not ui_sfx:

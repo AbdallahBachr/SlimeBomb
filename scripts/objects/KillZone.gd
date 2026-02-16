@@ -2,6 +2,7 @@ extends Area2D
 class_name KillZone
 
 signal ball_missed()
+const WALL_EDGE_IGNORE_PX: float = 70.0
 
 func _ready():
 	collision_layer = 1
@@ -17,6 +18,10 @@ func _on_body_entered(body):
 	if body is BallDragThrow:
 		var ball = body as BallDragThrow
 		if ball.is_grabbed:
+			return
+		var view_w = get_viewport_rect().size.x
+		if ball.global_position.x <= WALL_EDGE_IGNORE_PX or ball.global_position.x >= (view_w - WALL_EDGE_IGNORE_PX):
+			# Let wall logic/out-of-bounds handle side-lane balls to avoid false misses on valid wall hits.
 			return
 		if ball.ball_type != BallDragThrow.BallType.BOMB:
 			ball.mark_missed()

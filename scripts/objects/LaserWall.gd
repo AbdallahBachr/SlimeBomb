@@ -96,6 +96,8 @@ func _setup_visuals():
 func _on_body_entered(body):
 	if body is BallDragThrow:
 		var ball = body as BallDragThrow
+		if ball.resolved_on_wall:
+			return
 
 		var match_found = ball.universal_wall_match
 
@@ -108,12 +110,14 @@ func _on_body_entered(body):
 				match_found = true
 
 		if match_found:
+			ball.mark_resolved_by_wall()
 			if ball.has_method("hit_flash"):
 				ball.hit_flash(Color(1, 1, 1, 1))
 			ball_destroyed.emit(50, ball)
 			_play_destruction_effect(ball)
 			ball.queue_free()
 		else:
+			ball.mark_resolved_by_wall()
 			if ball.has_method("hit_flash"):
 				ball.hit_flash(Color(1, 0.3, 0.3, 1))
 			wrong_wall_hit.emit()
